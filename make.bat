@@ -1,7 +1,7 @@
 @echo off
 
-SET SRC_NAME=main.asm 
-SET IMG_NAME=image_player.z80
+SET SRC_NAME=main.asm
+SET IMG_NAME=image_player.z80 image_back.z80 map001.z80
 SET APP_NAME=gbtest
 
 cd src
@@ -14,7 +14,7 @@ FOR %%f in (%IMG_NAME%) DO (
     rgbasm -o %%~nf.o %%f
 )
 
-cd ..
+rgblink -o ..\rom\%APP_NAME%.gb -n ..\rom\%APP_NAME%.sym %SRC_NAME:.asm=.o% %IMG_NAME:.z80=.o%
+rgbfix -v -p 0 ..\rom\%APP_NAME%.gb
 
-rgblink -o rom\%APP_NAME%.gb src\%SRC_NAME:.asm=.o% src\%IMG_NAME:.z80=.o%
-rgbfix -v -p 0 rom\%APP_NAME%.gb
+cd ..

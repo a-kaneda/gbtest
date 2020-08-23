@@ -1,14 +1,20 @@
 include	"hardware.inc"
+include "image_back.inc"
 include "image_player.inc"
+include "map001.inc"
 
 ; ================================================================
 ; Constnt definitions
 ; ================================================================
 
 TILE_SIZE           equ 16
+TILE_WIDTH          equ 8
+TILE_HEIGHT         equ 8
 BG_WIDTH            equ 32
 BG_HEIGHT           equ 32
-TILENUM_PLAYER_01   equ 1
+TILENUM_BACK_001    equ 0
+TILELEN_BACK_001    equ 8
+TILENUM_PLAYER_01   equ (TILENUM_BACK_001 + TILELEN_BACK_001)
 TILELEN_PLAYER      equ 4
 SPRNUM_PLAYER       equ 0
 SPRITE_POS_Y        equ 0
@@ -25,6 +31,9 @@ SECTION	"Variables", WRAM0[$C000]
 
 sprites             ds 160
 hasHandledVBlank    ds 1
+work1               ds 1
+player_pos_x        ds 1
+player_pos_y        ds 1
 
 SECTION "Temporary", HRAM
 
@@ -174,6 +183,11 @@ Main:
     ld bc, $2000
     call ClearMemory
 
+    ld hl, ImageBack
+    ld de, _VRAM + TILENUM_BACK_001 * TILE_SIZE
+    ld bc, TILELEN_BACK_001 * TILE_SIZE
+    call CopyMemory
+
     ld hl, ImagePlayer
     ld de, _VRAM + TILENUM_PLAYER_01 * TILE_SIZE
     ld bc, TILELEN_PLAYER * TILE_SIZE
@@ -183,39 +197,12 @@ Main:
     ld bc, BG_WIDTH * BG_HEIGHT
     call ClearMemory
 
-    ld a, 30
-    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_Y], a
-    ld a, 30
-    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_X], a
-    ld a, TILENUM_PLAYER_01
-    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, 0
-    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
-    ld a, 38
-    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_Y], a
-    ld a, 30
-    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
-    ld a, TILENUM_PLAYER_01 + 1
-    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, 0
-    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
-    ld a, 30
-    ld hl, ImagePlayerTLE0
-    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_Y], a
-    ld a, 38
-    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_X], a
-    ld a, TILENUM_PLAYER_01 + 2
-    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, 0
-    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
-    ld a, 38
-    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_Y], a
-    ld a, 38
-    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
-    ld a, TILENUM_PLAYER_01 + 3
-    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, 0
-    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+    ld hl, _SCRN0
+    ld de, Map001
+    ld bc, Map001Height * $100 + Map001Width
+    call CopyMap
+
+    call UpdatePlayer
 
     call OAM_DMA
 
@@ -272,5 +259,162 @@ ClearMemory:
 CopyByte:
     ld [hl+], a
     dec b
-    jr nz, CopyMemory
+    jr nz, CopyByte
+    ret
+
+UpdatePlayer:
+
+    ld a, 30
+    ld [player_pos_x], a
+    ld a, 128
+    ld [player_pos_y], a
+
+    ; 左上のタイルを描画する。
+    ld a, [player_pos_y]
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld a, [player_pos_x]
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_X], a
+    ld a, TILENUM_PLAYER_01
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_NUM], a
+    ld a, 0
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+
+    ; 左下のタイルを描画する。
+    ld a, [player_pos_y]
+    add TILE_HEIGHT
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld a, [player_pos_x]
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
+    ld a, TILENUM_PLAYER_01 + 1
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_NUM], a
+    ld a, 0
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+
+    ; 右上のタイルを描画する。
+    ld a, [player_pos_y]
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld a, [player_pos_x]
+    add TILE_WIDTH
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_X], a
+    ld a, TILENUM_PLAYER_01 + 2
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_NUM], a
+    ld a, 0
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+
+    ; 右下のタイルを描画する。
+    ld a, [player_pos_y]
+    add TILE_HEIGHT
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld a, [player_pos_x]
+    add TILE_WIDTH
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
+    ld a, TILENUM_PLAYER_01 + 3
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_NUM], a
+    ld a, 0
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+    ret
+
+; バックグラウンドマップをコピーする。
+; コピー元は16x16のタイルを前提とする。
+; @param hl [IN/OUT] コピー先のVRAM
+; @param de [IN/OUT] コピー元のWRAM
+; @param b [IN/OUT] マップの高さ
+; @param c [IN/OUT] マップの幅
+CopyMap:
+
+    ; マップの幅をメモリに保持しておく。
+    ld a, c
+    ld [work1], a
+
+    ; コピー元アドレスをスタックに保持する。
+    push de
+
+.loop
+    ; コピー元のマップデータを取得する。
+    ld a, [de]
+
+    ; 左上のタイルを設定する。
+    sla a
+    sla a
+    ld [hl+], a
+
+    ; 右上のタイルを設定する。
+    add a, 2
+    ld [hl+], a
+
+    ; コピー元のアドレスを一つ進める。
+    inc de
+    
+    ; マップ幅分処理するまでループする。
+    dec c
+    jr nz, .loop
+
+    ; マップ幅を元に戻し、マップ幅・高さをスタックに保存する。
+    ld a, [work1]
+    ld c, a
+    push bc
+
+    ; コピー先のアドレスを次の行まで進める。
+    ld a, BG_WIDTH
+    sub c
+    sub c
+    ld b, 0
+    ld c, a
+    add hl, bc
+
+    ; スタックからマップ幅・高さを復元する。
+    pop bc
+
+    ; コピー元のアドレスを1行分戻す。
+    pop de
+
+.loop2
+    ; コピー元のマップデータを取得する。
+    ld a, [de]
+
+    ; 左下のタイルを設定する。
+    sla a
+    sla a
+    inc a
+    ld [hl+], a
+
+    ; 右下のタイルを設定する。
+    add a, 2
+    ld [hl+], a
+
+    ; コピー元のアドレスを一つ進める。
+    inc de
+    
+    ; マップ幅分処理するまでループする。
+    dec c
+    jr nz, .loop2
+
+    ; マップ高さ分処理したら処理を終了する。
+    dec b
+    jr z, .finish
+
+    ; マップ幅を元に戻し、マップ幅・高さをスタックに保存する。
+    ld a, [work1]
+    ld c, a
+    push bc
+
+    ; コピー先のアドレスを次の行まで進める。
+    ld a, BG_WIDTH
+    sub c
+    sub c
+    ld b, 0
+    ld c, a
+    add hl, bc
+
+    ; スタックからマップ幅・高さを復元する。
+    pop bc
+
+    ; コピー元アドレスをスタックに保持する。
+    push de
+
+    ; ループの先頭に戻る。
+    jr .loop
+
+.finish
+
     ret
