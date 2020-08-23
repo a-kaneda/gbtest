@@ -161,6 +161,9 @@ Main:
     ld [rBGP], a
     ld [rOBP0], a
 
+    ld a, %11100001
+    ld [rOBP1], a
+
     xor a
     ld [rSCX], a
     ld [rSCY], a
@@ -276,7 +279,7 @@ UpdatePlayer:
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_X], a
     ld a, TILENUM_PLAYER_01
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, 0
+    ld a, OAMF_PAL1
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
 
     ; 左下のタイルを描画する。
@@ -287,7 +290,7 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
     ld a, TILENUM_PLAYER_01 + 1
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, 0
+    ld a, OAMF_PAL1
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
 
     ; 右上のタイルを描画する。
@@ -298,7 +301,7 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_X], a
     ld a, TILENUM_PLAYER_01 + 2
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, 0
+    ld a, OAMF_PAL1
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
 
     ; 右下のタイルを描画する。
@@ -310,7 +313,7 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
     ld a, TILENUM_PLAYER_01 + 3
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, 0
+    ld a, OAMF_PAL1
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
     ret
 
