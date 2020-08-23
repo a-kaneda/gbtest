@@ -1,12 +1,34 @@
 include	"hardware.inc"
+include "image_player.inc"
+
+; ================================================================
+; Constnt definitions
+; ================================================================
+
+TILE_SIZE           equ 16
+BG_WIDTH            equ 32
+BG_HEIGHT           equ 32
+TILENUM_PLAYER_01   equ 1
+TILELEN_PLAYER      equ 4
+SPRNUM_PLAYER       equ 0
+SPRITE_POS_Y        equ 0
+SPRITE_POS_X        equ 1
+SPRITE_NUM          equ 2
+SPRITE_ATTRIBUTE    equ 3
+SPRITE_SIZE         equ 4
 
 ; ================================================================
 ; Variable definitions
 ; ================================================================
 
-SECTION	"Variables", WRAM0
+SECTION	"Variables", WRAM0[$C000]
 
+sprites             ds 160
 hasHandledVBlank    ds 1
+
+SECTION "Temporary", HRAM
+
+OAM_DMA             ds 10
 
 ; ================================================================
 ; Reset vectors (actual ROM starts here)
@@ -128,31 +150,79 @@ Main:
 
     ld a, %11100100
     ld [rBGP], a
+    ld [rOBP0], a
 
     xor a
     ld [rSCX], a
     ld [rSCY], a
 
-    ld hl, _VRAM
-    ld b, 16
-.clearVRAM
-    ld [hl+], a
+    ld hl, OAM_DMA_
+    ld bc, (10 * $100) + (OAM_DMA % $100)
+.copyOAM_DMA
+    ld a, [hl+]
+    ld [c], a
+    inc c
     dec b
-    jr nz, .clearVRAM
+    jr nz, .copyOAM_DMA
+
+    xor a
+    ld hl, sprites
+    ld b, 160
+    call CopyByte
+
+    ld hl, _VRAM
+    ld bc, $2000
+    call ClearMemory
+
+    ld hl, ImagePlayer
+    ld de, _VRAM + TILENUM_PLAYER_01 * TILE_SIZE
+    ld bc, TILELEN_PLAYER * TILE_SIZE
+    call CopyMemory
 
     ld hl, _SCRN0
-    ld bc, 32 * 32
-.clearBG0
-    xor a
-    ld [hl+], a
-    dec bc
-    ld a, b
-    or c
-    jr nz, .clearBG0
+    ld bc, BG_WIDTH * BG_HEIGHT
+    call ClearMemory
 
+    ld a, 30
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld a, 30
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_X], a
+    ld a, TILENUM_PLAYER_01
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_NUM], a
+    ld a, 0
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+    ld a, 38
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld a, 30
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
+    ld a, TILENUM_PLAYER_01 + 1
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_NUM], a
+    ld a, 0
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+    ld a, 30
+    ld hl, ImagePlayerTLE0
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld a, 38
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_X], a
+    ld a, TILENUM_PLAYER_01 + 2
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_NUM], a
+    ld a, 0
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+    ld a, 38
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld a, 38
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
+    ld a, TILENUM_PLAYER_01 + 3
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_NUM], a
+    ld a, 0
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+
+    call OAM_DMA
+
+    xor a
     ld [hasHandledVBlank], a
 
-    ld a, LCDCF_ON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_BGON | LCDCF_OBJ8 | LCDCF_OBJOFF
+    ld a, LCDCF_ON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_BGON | LCDCF_OBJ8 | LCDCF_OBJON
     ld [rLCDC], a
 
     ld a, IEF_VBLANK
@@ -167,4 +237,40 @@ MainLoop:
     xor a
     ld [hasHandledVBlank], a
 
+    call OAM_DMA
+
     jp MainLoop
+
+OAM_DMA_:
+    ld a, sprites / $100
+    ld [rDMA], a
+    ld a, 40
+.wait
+    dec a
+    jr nz, .wait
+    ret
+
+CopyMemory:
+    ld a, [hl+]
+    ld [de], a
+    inc de
+    dec bc
+    ld a, b
+    or c
+    jr nz, CopyMemory
+    ret
+
+ClearMemory:
+    xor a
+    ld [hl+], a
+    dec bc
+    ld a, b
+    or c
+    jr nz, ClearMemory
+    ret
+
+CopyByte:
+    ld [hl+], a
+    dec b
+    jr nz, CopyMemory
+    ret
