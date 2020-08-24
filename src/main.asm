@@ -45,6 +45,7 @@ holdedButton        ds 1
 work1               ds 1
 player_pos_x        ds 1
 player_pos_y        ds 1
+player_attribute    ds 1
 VARIABLES_END:
 
 SECTION "Temporary", HRAM
@@ -221,6 +222,8 @@ Main:
     ld [player_pos_x], a
     ld a, 128
     ld [player_pos_y], a
+    ld a, OAMF_PAL1
+    ld [player_attribute], a
 
     call UpdatePlayer
     call OAM_DMA
@@ -285,68 +288,80 @@ UpdatePlayer:
     ; 十字キー左が押されている場合は左へ移動する。
     ld a, [holdedButton]
     and BUTTON_LEFT
-    jr z, .next1
+    jr z, .checkRightButton
 
     ld a, [player_pos_x]
     add a, -1
     ld [player_pos_x], a
 
-.next1
+    ; 左向きにする。
+    ld a, [player_attribute]
+    or a, OAMF_XFLIP
+    ld [player_attribute], a
+
+.checkRightButton
 
     ; 十字キー右が押されている場合は右へ移動する。
     ld a, [holdedButton]
     and BUTTON_RIGHT
-    jr z, .next2
+    jr z, .setOAM
 
     ld a, [player_pos_x]
     add a, 1
     ld [player_pos_x], a
 
-.next2
+    ; 右向きにする。
+    ld a, [player_attribute]
+    and a, ~OAMF_XFLIP
+    ld [player_attribute], a
 
-    ; 左上のタイルを描画する。
+.setOAM
+
+    ; 各タイルのy座標を設定する。
     ld a, [player_pos_y]
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_Y], a
-    ld a, [player_pos_x]
-    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_X], a
-    ld a, TILENUM_PLAYER_01
-    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, OAMF_PAL1
-    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
-
-    ; 左下のタイルを描画する。
-    ld a, [player_pos_y]
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_Y], a
     add TILE_HEIGHT
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_Y], a
-    ld a, [player_pos_x]
-    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
-    ld a, TILENUM_PLAYER_01 + 1
-    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, OAMF_PAL1
-    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_Y], a
 
-    ; 右上のタイルを描画する。
-    ld a, [player_pos_y]
-    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ; 各タイルのx座標を設定する。
+    ld a, [player_attribute]
+    and a, OAMF_XFLIP
+    jr nz, .xflip
     ld a, [player_pos_x]
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_X], a
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
     add TILE_WIDTH
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_X], a
-    ld a, TILENUM_PLAYER_01 + 2
-    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, OAMF_PAL1
-    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
-
-    ; 右下のタイルを描画する。
-    ld a, [player_pos_y]
-    add TILE_HEIGHT
-    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_Y], a
-    ld a, [player_pos_x]
-    add TILE_WIDTH
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
-    ld a, TILENUM_PLAYER_01 + 3
+    jr .setTileNumber
+.xflip
+    ld a, [player_pos_x]
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_X], a
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
+    add TILE_WIDTH
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_X], a
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
+
+.setTileNumber
+    ; 各タイルのタイル番号を設定するｌ
+    ld a, TILENUM_PLAYER_01
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_NUM], a
+    inc a
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_NUM], a
+    inc a
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_NUM], a
+    inc a
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_NUM], a
-    ld a, OAMF_PAL1
+
+    ; 各タイルのattributeを設定する。
+    ld a, [player_attribute]
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
+
     ret
 
 ; バックグラウンドマップをコピーする。
