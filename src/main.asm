@@ -22,6 +22,14 @@ SPRITE_POS_X        equ 1
 SPRITE_NUM          equ 2
 SPRITE_ATTRIBUTE    equ 3
 SPRITE_SIZE         equ 4
+BUTTON_DOWN         equ %10000000
+BUTTON_UP           equ %01000000
+BUTTON_LEFT         equ %00100000
+BUTTON_RIGHT        equ %00010000
+BUTTON_START        equ %00001000
+BUTTON_SELECT       equ %00000100
+BUTTON_B            equ %00000010
+BUTTON_A            equ %00000001
 
 ; ================================================================
 ; Variable definitions
@@ -29,11 +37,15 @@ SPRITE_SIZE         equ 4
 
 SECTION	"Variables", WRAM0[$C000]
 
+VARIABLES_BEGIN:
 sprites             ds 160
 hasHandledVBlank    ds 1
+pressedButton       ds 1
+holdedButton        ds 1
 work1               ds 1
 player_pos_x        ds 1
 player_pos_y        ds 1
+VARIABLES_END:
 
 SECTION "Temporary", HRAM
 
@@ -177,10 +189,9 @@ Main:
     dec b
     jr nz, .copyOAM_DMA
 
-    xor a
-    ld hl, sprites
-    ld b, 160
-    call CopyByte
+    ld hl, VARIABLES_BEGIN
+    ld bc, VARIABLES_END - VARIABLES_BEGIN
+    call ClearMemory
 
     ld hl, _VRAM
     ld bc, $2000
@@ -205,12 +216,14 @@ Main:
     ld bc, Map001Height * $100 + Map001Width
     call CopyMap
 
+    ; プレイヤーキャラの初期位置を設定する。
+    ld a, 30
+    ld [player_pos_x], a
+    ld a, 128
+    ld [player_pos_y], a
+
     call UpdatePlayer
-
     call OAM_DMA
-
-    xor a
-    ld [hasHandledVBlank], a
 
     ld a, LCDCF_ON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_BGON | LCDCF_OBJ8 | LCDCF_OBJON
     ld [rLCDC], a
@@ -228,6 +241,8 @@ MainLoop:
     ld [hasHandledVBlank], a
 
     call OAM_DMA
+    call CheckInput
+    call UpdatePlayer
 
     jp MainLoop
 
@@ -267,10 +282,27 @@ CopyByte:
 
 UpdatePlayer:
 
-    ld a, 30
+    ; 十字キー左が押されている場合は左へ移動する。
+    ld a, [holdedButton]
+    and BUTTON_LEFT
+    jr z, .next1
+
+    ld a, [player_pos_x]
+    add a, -1
     ld [player_pos_x], a
-    ld a, 128
-    ld [player_pos_y], a
+
+.next1
+
+    ; 十字キー右が押されている場合は右へ移動する。
+    ld a, [holdedButton]
+    and BUTTON_RIGHT
+    jr z, .next2
+
+    ld a, [player_pos_x]
+    add a, 1
+    ld [player_pos_x], a
+
+.next2
 
     ; 左上のタイルを描画する。
     ld a, [player_pos_y]
@@ -419,5 +451,59 @@ CopyMap:
     jr .loop
 
 .finish
+
+    ret
+
+; ボタン入力をチェックする。
+CheckInput:
+
+    ; ボタン入力の読み込みを行う。
+    ld a, P1F_5
+    ld [rP1], a
+    ld a, [rP1]
+    ld a, [rP1]
+
+    ; ビット反転して、入力あり=1とする。
+    cpl 
+
+    ; 入力部分以外のビットを落とす。
+    and a, $f
+
+    ; ボタン入力を上位4bitとする。
+    swap a
+    ld b, a
+
+    ; 十字キーの入力を行う。
+    ld a, P1F_4
+    ld [rP1], a
+    ld a, [rP1]
+    ld a, [rP1]
+    ld a, [rP1]
+    ld a, [rP1]
+    ld a, [rP1]
+    ld a, [rP1]
+
+    ; ビット反転して、入力あり=1とする。
+    cpl 
+
+    ; 入力部分以外のビットを落とす。
+    and a, $f
+
+    ; 十字キー入力を下位4bitとする。
+    or a, b
+    ld b, a
+
+    ; 前回押されておらず、今回新たに押されたボタンを記憶する。
+    ld a, [holdedButton]
+    xor a, b
+    and a, b
+    ld [pressedButton], a
+
+    ; 押し続けているものを含めて、今回押されているボタンを記憶する。
+    ld a, b
+    ld [holdedButton], a
+
+    ; ボタン入力を終了する。
+    ld a, P1F_5 | P1F_4
 
     ret
