@@ -10,12 +10,13 @@ include "map001.inc"
 TILE_SIZE           equ 16
 TILE_WIDTH          equ 8
 TILE_HEIGHT         equ 8
+TILE_NUM_16x16      equ 4
 BG_WIDTH            equ 32
 BG_HEIGHT           equ 32
 TILENUM_BACK_001    equ 0
 TILELEN_BACK_001    equ 8
 TILENUM_PLAYER_01   equ (TILENUM_BACK_001 + TILELEN_BACK_001)
-TILELEN_PLAYER      equ 4
+TILELEN_PLAYER      equ 8
 SPRNUM_PLAYER       equ 0
 SPRITE_POS_Y        equ 0
 SPRITE_POS_X        equ 1
@@ -30,6 +31,7 @@ BUTTON_START        equ %00001000
 BUTTON_SELECT       equ %00000100
 BUTTON_B            equ %00000010
 BUTTON_A            equ %00000001
+PLAYER_ANIM_SPEED   equ $20
 
 ; ================================================================
 ; Variable definitions
@@ -45,7 +47,10 @@ holdedButton        ds 1
 work1               ds 1
 player_pos_x        ds 1
 player_pos_y        ds 1
+player_tile         ds 1
 player_attribute    ds 1
+player_animation    ds 1
+player_anim_wait    ds 1
 VARIABLES_END:
 
 SECTION "Temporary", HRAM
@@ -217,11 +222,13 @@ Main:
     ld bc, Map001Height * $100 + Map001Width
     call CopyMap
 
-    ; プレイヤーキャラの初期位置を設定する。
+    ; プレイヤーキャラの初期状態を設定する。
     ld a, 30
     ld [player_pos_x], a
     ld a, 128
     ld [player_pos_y], a
+    ld a, TILENUM_PLAYER_01
+    ld [player_tile], a
     ld a, OAMF_PAL1
     ld [player_attribute], a
 
@@ -285,37 +292,15 @@ CopyByte:
 
 UpdatePlayer:
 
-    ; 十字キー左が押されている場合は左へ移動する。
-    ld a, [holdedButton]
-    and BUTTON_LEFT
-    jr z, .checkRightButton
+    ; 左方向への歩行処理を行う。
+    ld b, BUTTON_LEFT
+    ld c, -1
+    call WalkPlayer
 
-    ld a, [player_pos_x]
-    add a, -1
-    ld [player_pos_x], a
-
-    ; 左向きにする。
-    ld a, [player_attribute]
-    or a, OAMF_XFLIP
-    ld [player_attribute], a
-
-.checkRightButton
-
-    ; 十字キー右が押されている場合は右へ移動する。
-    ld a, [holdedButton]
-    and BUTTON_RIGHT
-    jr z, .setOAM
-
-    ld a, [player_pos_x]
-    add a, 1
-    ld [player_pos_x], a
-
-    ; 右向きにする。
-    ld a, [player_attribute]
-    and a, ~OAMF_XFLIP
-    ld [player_attribute], a
-
-.setOAM
+    ; 右方向への歩行処理を行う。
+    ld b, BUTTON_RIGHT
+    ld c, 1
+    call WalkPlayer
 
     ; 各タイルのy座標を設定する。
     ld a, [player_pos_y]
@@ -346,7 +331,10 @@ UpdatePlayer:
 
 .setTileNumber
     ; 各タイルのタイル番号を設定するｌ
-    ld a, TILENUM_PLAYER_01
+    ld a, [player_tile]
+    ld b, a
+    ld a, [player_animation]
+    add a, b
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_NUM], a
     inc a
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_NUM], a
@@ -366,10 +354,10 @@ UpdatePlayer:
 
 ; バックグラウンドマップをコピーする。
 ; コピー元は16x16のタイルを前提とする。
-; @param hl [IN/OUT] コピー先のVRAM
-; @param de [IN/OUT] コピー元のWRAM
-; @param b [IN/OUT] マップの高さ
-; @param c [IN/OUT] マップの幅
+; @param hl [in/out] コピー先のVRAM
+; @param de [in/out] コピー元のWRAM
+; @param b [in/out] マップの高さ
+; @param c [in/out] マップの幅
 CopyMap:
 
     ; マップの幅をメモリに保持しておく。
@@ -520,5 +508,53 @@ CheckInput:
 
     ; ボタン入力を終了する。
     ld a, P1F_5 | P1F_4
+
+    ret
+
+; プレイヤーキャラの歩く処理を行う。
+; @param b [in] チェックするボタン
+; @param c [in] x方向の移動量
+WalkPlayer:
+
+    ; bで指定されたキーが押されているかチェックする。
+    ld a, [holdedButton]
+    and b
+    ret z
+
+    ; cで指定された移動量分移動する。
+    ld a, [player_pos_x]
+    add a, c
+    ld [player_pos_x], a
+
+    ; 移動量がプラスかマイナスかチェックする。
+    ld a, c
+    cp a, $80
+    jr nc, .left
+
+    ; 右向きにする。
+    ld a, [player_attribute]
+    and a, ~OAMF_XFLIP
+    ld [player_attribute], a
+    jr .animation
+
+.left
+
+    ; 左向きにする。
+    ld a, [player_attribute]
+    or a, OAMF_XFLIP
+    ld [player_attribute], a
+
+.animation
+
+    ; アニメーションを進める。
+    ld a, [player_anim_wait]
+    add a, PLAYER_ANIM_SPEED
+    ld [player_anim_wait], a
+    ret nc
+
+    ; アニメーション待機フレームが終わっている場合はスプライトを変える。
+    ld a, [player_animation]
+    xor a, TILE_NUM_16x16
+    ld [player_animation], a
 
     ret
