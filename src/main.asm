@@ -32,6 +32,23 @@ BUTTON_SELECT       equ %00000100
 BUTTON_B            equ %00000010
 BUTTON_A            equ %00000001
 PLAYER_ANIM_SPEED   equ $20
+MAP_TILE            equ %00111111
+MAP_ATTRIBUTE       equ %11000000
+MAP_BLOCK           equ %01000000
+FALL_ACCEL          equ $80
+MAX_FALL_SPEED      equ 4
+CHARACTER_SIZE      equ 16
+CH_POS_X            equ 0
+CH_POS_Y            equ 1
+CH_TILE             equ 2
+CH_ATTR             equ 3
+CH_SPEED_Y          equ 4
+CH_ACCEL_Y          equ 5
+CH_ANIMATION        equ 6
+CH_ANIM_WAIT        equ 7
+CH_DATA_SIZE        equ 8
+SPRITE_OFFSET_X     equ 8
+SPRITE_OFFSET_Y     equ 16
 
 ; ================================================================
 ; Variable definitions
@@ -45,12 +62,12 @@ hasHandledVBlank    ds 1
 pressedButton       ds 1
 holdedButton        ds 1
 work1               ds 1
-player_pos_x        ds 1
-player_pos_y        ds 1
-player_tile         ds 1
-player_attribute    ds 1
-player_animation    ds 1
-player_anim_wait    ds 1
+work2               ds 1
+work3               ds 1
+player_data         ds CH_DATA_SIZE
+map_width           ds 1
+map_address_h       ds 1
+map_address_l       ds 1
 VARIABLES_END:
 
 SECTION "Temporary", HRAM
@@ -222,15 +239,19 @@ Main:
     ld bc, Map001Height * $100 + Map001Width
     call CopyMap
 
+    ; マップの幅を設定する。
+    ld a, Map001Width
+    ld [map_width], a
+
     ; プレイヤーキャラの初期状態を設定する。
-    ld a, 30
-    ld [player_pos_x], a
-    ld a, 128
-    ld [player_pos_y], a
+    ld a, 16 + SPRITE_OFFSET_X
+    ld [player_data + CH_POS_X], a
+    ld a, 16 + SPRITE_OFFSET_Y
+    ld [player_data + CH_POS_Y], a
     ld a, TILENUM_PLAYER_01
-    ld [player_tile], a
+    ld [player_data + CH_TILE], a
     ld a, OAMF_PAL1
-    ld [player_attribute], a
+    ld [player_data + CH_ATTR], a
 
     call UpdatePlayer
     call OAM_DMA
@@ -302,8 +323,12 @@ UpdatePlayer:
     ld c, 1
     call WalkPlayer
 
+    ; 落下処理を行う。
+    ld hl, player_data
+    call FallCharacter
+
     ; 各タイルのy座標を設定する。
-    ld a, [player_pos_y]
+    ld a, [player_data + CH_POS_Y]
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_Y], a
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_Y], a
     add TILE_HEIGHT
@@ -311,10 +336,10 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_Y], a
 
     ; 各タイルのx座標を設定する。
-    ld a, [player_attribute]
+    ld a, [player_data + CH_ATTR]
     and a, OAMF_XFLIP
     jr nz, .xflip
-    ld a, [player_pos_x]
+    ld a, [player_data + CH_POS_X]
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_X], a
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
     add TILE_WIDTH
@@ -322,7 +347,7 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
     jr .setTileNumber
 .xflip
-    ld a, [player_pos_x]
+    ld a, [player_data + CH_POS_X]
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_X], a
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
     add TILE_WIDTH
@@ -331,9 +356,9 @@ UpdatePlayer:
 
 .setTileNumber
     ; 各タイルのタイル番号を設定するｌ
-    ld a, [player_tile]
+    ld a, [player_data + CH_TILE]
     ld b, a
-    ld a, [player_animation]
+    ld a, [player_data + CH_ANIMATION]
     add a, b
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_NUM], a
     inc a
@@ -344,7 +369,7 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_NUM], a
 
     ; 各タイルのattributeを設定する。
-    ld a, [player_attribute]
+    ld a, [player_data + CH_ATTR]
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
@@ -355,7 +380,7 @@ UpdatePlayer:
 ; バックグラウンドマップをコピーする。
 ; コピー元は16x16のタイルを前提とする。
 ; @param hl [in/out] コピー先のVRAM
-; @param de [in/out] コピー元のWRAM
+; @param de [in/out] コピー元のROM
 ; @param b [in/out] マップの高さ
 ; @param c [in/out] マップの幅
 CopyMap:
@@ -364,12 +389,21 @@ CopyMap:
     ld a, c
     ld [work1], a
 
+    ; マップのアドレスをメモリに保持しておく。
+    ld a, d
+    ld [map_address_h], a
+    ld a, e
+    ld [map_address_l], a
+
     ; コピー元アドレスをスタックに保持する。
     push de
 
 .loop
     ; コピー元のマップデータを取得する。
     ld a, [de]
+
+    ; タイル番号を取り出す。
+    and a, MAP_TILE
 
     ; 左上のタイルを設定する。
     sla a
@@ -409,6 +443,9 @@ CopyMap:
 .loop2
     ; コピー元のマップデータを取得する。
     ld a, [de]
+
+    ; タイル番号を取り出す。
+    and a, MAP_TILE
 
     ; 左下のタイルを設定する。
     sla a
@@ -470,7 +507,7 @@ CheckInput:
     cpl 
 
     ; 入力部分以外のビットを落とす。
-    and a, $f
+    and a, $0f
 
     ; ボタン入力を上位4bitとする。
     swap a
@@ -522,9 +559,9 @@ WalkPlayer:
     ret z
 
     ; cで指定された移動量分移動する。
-    ld a, [player_pos_x]
+    ld a, [player_data + CH_POS_X]
     add a, c
-    ld [player_pos_x], a
+    ld [player_data + CH_POS_X], a
 
     ; 移動量がプラスかマイナスかチェックする。
     ld a, c
@@ -532,29 +569,255 @@ WalkPlayer:
     jr nc, .left
 
     ; 右向きにする。
-    ld a, [player_attribute]
+    ld a, [player_data + CH_ATTR]
     and a, ~OAMF_XFLIP
-    ld [player_attribute], a
+    ld [player_data + CH_ATTR], a
     jr .animation
 
 .left
 
     ; 左向きにする。
-    ld a, [player_attribute]
+    ld a, [player_data + CH_ATTR]
     or a, OAMF_XFLIP
-    ld [player_attribute], a
+    ld [player_data + CH_ATTR], a
 
 .animation
 
     ; アニメーションを進める。
-    ld a, [player_anim_wait]
+    ld a, [player_data + CH_ANIM_WAIT]
     add a, PLAYER_ANIM_SPEED
-    ld [player_anim_wait], a
+    ld [player_data + CH_ANIM_WAIT], a
     ret nc
 
     ; アニメーション待機フレームが終わっている場合はスプライトを変える。
-    ld a, [player_animation]
+    ld a, [player_data + CH_ANIMATION]
     xor a, TILE_NUM_16x16
-    ld [player_animation], a
+    ld [player_data + CH_ANIMATION], a
+
+    ret
+
+; キャラクターの落下処理を行う。
+; @param hl [in] キャラクターデータ
+FallCharacter:
+
+    ; 床に接触しているか調べる。
+    call CheckFloor
+    cp a, 1
+    jr z, .finish
+
+    ; スタックにキャラクターデータのアドレスを保持しておく。
+    push hl
+
+    ; 加速度のアドレスを計算する。
+    ld bc, CH_ACCEL_Y
+    add hl, bc
+
+    ; 加速度を加算する。
+    ld a, [hl]
+    add a, FALL_ACCEL
+    ld [hl], a
+
+    ; 加速度が256に満たない場合は速度は増加させない。
+    jr nc, .getYSpeed
+
+    ; 速度のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_SPEED_Y
+    add hl, bc
+
+    ; 速度を加算する。
+    ld a, [hl]
+    inc a
+
+    ; 速度が上限に達している場合は上限値を設定する。
+    cp a, MAX_FALL_SPEED
+    jr c, .setYSpeed
+    ld a, MAX_FALL_SPEED
+   
+.setYSpeed
+
+    ; 速度を変更する。
+    ld [hl], a
+    jr .setYPosition
+
+.getYSpeed
+
+    ; 速度のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_SPEED_Y
+    add hl, bc
+
+    ; 速度を取得する。
+    ld a, [hl]
+
+.setYPosition
+
+    ; 位置のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_POS_Y
+    add hl, bc
+
+    ; 位置を加算する。
+    add a, [hl]
+    ld [hl], a
+
+    ; キャラクターデータのアドレスをスタックから復元する。
+    pop hl
+
+.finish
+
+    ret
+
+; キャラクターが地面に接触しているか調べる。
+; @param hl [in] キャラクターデータ
+CheckFloor:
+
+    ; スタックにキャラクターデータのアドレスを保持しておく。
+    push hl
+
+    ; y座標を取得する。
+    pop hl
+    push hl
+    ld bc, CH_POS_Y
+    add hl, bc
+    ld a, [hl]
+
+    ; スプライト座標のオフセット分を減算する。
+    sub a, SPRITE_OFFSET_Y
+
+    ; 高さを加算し、足下の座標を計算する。
+    add a, CHARACTER_SIZE
+    
+    ; 16で割って、座標からマップインデックスに換算する。
+    srl a
+    srl a
+    srl a
+    srl a
+
+    ; y座標マップインデックスをメモリに保持しておく。
+    ld [work1], a
+
+    ; x座標を取得する。
+    pop hl
+    push hl
+    ld a, [hl]
+
+    ; スプライト座標のオフセット分を減算する。
+    sub a, SPRITE_OFFSET_X
+
+    ; x座標が16の倍数でない場合は一つ右側のマップタイルも調べる。
+    ld b, a
+    and a, $0f
+    jr z, .skip2
+    ld a, 1
+    jr .skip
+
+.skip2
+
+    xor a
+
+.skip
+
+    ld [work3], a
+    ld a, b
+
+    ; 16で割って、座標からマップインデックスに換算する。
+    srl a
+    srl a
+    srl a
+    srl a
+
+    ; x座標マップインデックスをメモリに保持しておく。
+    ld [work2], a
+
+    ; マップインデックスを計算する。
+    ; y * width + x
+    ld a, [work1]
+    ld d, a
+    ld a, [map_width]
+    ld e, a
+    xor a
+    ld b, 0
+    ld c, 0
+.loop
+    add a, e
+    jr nc, .cont
+    inc b
+.cont
+    dec d
+    jr nz, .loop
+
+    ld d, a
+    ld a, [work2]
+    add a, d
+    ld c, a
+
+    ; マップのアドレスを取得する。
+    ld a, [map_address_h]
+    ld h, a
+    ld a, [map_address_l]
+    ld l, a
+
+    ; 足元のマップタイル情報を取得する。
+    add hl, bc
+    ld a, [hl]
+    and a, MAP_ATTRIBUTE
+
+    ; 足元がブロックかどうか調べる。
+    cp a, MAP_BLOCK
+    jr z, .hitFloor
+
+    ; 2つのタイルにまたいでいる場合は右側のタイルもチェックする。
+    ld a, [work3]
+    and a
+    jr z, .finish
+
+    inc hl
+    ld a, [hl]
+    and a, MAP_ATTRIBUTE
+
+    ; 足元がブロックかどうか調べる。
+    cp a, MAP_BLOCK
+    jr nz, .finish
+
+.hitFloor
+
+    ; 速度のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_SPEED_Y
+    add hl, bc
+
+    ; 速度を0にする。
+    xor a
+    ld [hl], a
+
+    ; 加速度のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_ACCEL_Y
+    add hl, bc
+
+    ; 加速度を0にする。
+    ld [hl], a
+
+    ; キャラクターデータのアドレスをスタックから復元する。
+    pop hl
+
+    ; 足元にブロックがある場合はaを1として終了する。
+    inc a
+
+    ret
+
+.finish
+
+    ; キャラクターデータのアドレスをスタックから復元する。
+    pop hl
+
+    ; 足元にブロックがない場合はaを0として終了する。
+    xor a
 
     ret
