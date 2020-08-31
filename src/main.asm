@@ -46,9 +46,15 @@ CH_SPEED_Y          equ 4
 CH_ACCEL_Y          equ 5
 CH_ANIMATION        equ 6
 CH_ANIM_WAIT        equ 7
-CH_DATA_SIZE        equ 8
+CH_JUMP_TIME        equ 8
+CH_DATA_SIZE        equ 9
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
+STATUS_NORMAL       equ 0
+STATUS_JUMP         equ 1
+JUMP_SPEED          equ -4
+JUMP_ACCEL          equ $30
+JUMP_TIME           equ 20
 
 ; ================================================================
 ; Variable definitions
@@ -65,6 +71,7 @@ work1               ds 1
 work2               ds 1
 work3               ds 1
 player_data         ds CH_DATA_SIZE
+player_status       ds 1
 map_width           ds 1
 map_address_h       ds 1
 map_address_l       ds 1
@@ -323,9 +330,43 @@ UpdatePlayer:
     ld c, 1
     call WalkPlayer
 
-    ; 落下処理を行う。
+    ; 床に接触しているか調べる。
     ld hl, player_data
+    call CheckFloor
+    cp a, 1
+    jr z, .jump
+
+    ; プレイヤーキャラの状態をジャンプ中にする。
+    ld a, STATUS_JUMP
+    ld [player_status], a
+
+    ; 落下処理を行う。
     call FallCharacter
+
+    jr .setAnimation
+
+.jump
+
+    ; プレイヤーキャラの状態を通常にする。
+    ld a, STATUS_NORMAL
+    ld [player_status], a
+
+    ; ジャンプ処理を行う。
+    call JumpPlayer
+
+.setAnimation
+
+    ; プレイヤーの状態を取得する。
+    ld a, [player_status]
+
+    ; ジャンプ中の場合は0番目固定とする。
+    cp a, STATUS_JUMP
+    jr nz, .setTilePos
+    xor a
+    ld [player_data + CH_ANIMATION], a
+    ld [player_data + CH_ANIM_WAIT], a
+
+.setTilePos
 
     ; 各タイルのy座標を設定する。
     ld a, [player_data + CH_POS_Y]
@@ -596,48 +637,91 @@ WalkPlayer:
 
     ret
 
+; プレイヤーキャラのジャンプする処理を行う。
+JumpPlayer:
+
+    ; Aボタンが押されているかチェックする。
+    ld a, [pressedButton]
+    and BUTTON_A
+    ret z
+
+    ; ジャンプスピードを設定する。
+    ld a, JUMP_SPEED
+    ld [player_data + CH_SPEED_Y], a
+
+    ; 位置に加算する。
+    ld a, [player_data + CH_POS_Y]
+    add a, JUMP_SPEED
+    ld [player_data + CH_POS_Y], a
+
+    ; ジャンプ時間を設定する。
+    ld a, JUMP_TIME
+    ld [player_data + CH_JUMP_TIME], a
+    
+    ; プレイヤーキャラの状態をジャンプ中にする。
+    ld a, STATUS_JUMP
+    ld [player_status], a
+
+    ret
+
 ; キャラクターの落下処理を行う。
 ; @param hl [in] キャラクターデータ
 FallCharacter:
 
-    ; 床に接触しているか調べる。
-    call CheckFloor
-    cp a, 1
-    jr z, .finish
-
     ; スタックにキャラクターデータのアドレスを保持しておく。
     push hl
 
+    ; ジャンプ時間を取得する。
+    ld bc, CH_JUMP_TIME
+    add hl, bc
+    ld a, [hl]
+
+    ; ジャンプ時間が設定されていなければ落下処理を行う。
+    and a
+    jr z, .fall
+
+    ; ジャンプ時間を減らす。
+    dec a
+    ld [hl], a
+
+    ld d, JUMP_ACCEL
+    ld e, 0
+    jr .setYAccel
+
+.fall
+
+    ld d, FALL_ACCEL
+    ld e, MAX_FALL_SPEED
+
+.setYAccel
+
     ; 加速度のアドレスを計算する。
+    pop hl
+    push hl
     ld bc, CH_ACCEL_Y
     add hl, bc
 
     ; 加速度を加算する。
     ld a, [hl]
-    add a, FALL_ACCEL
+    add a, d
     ld [hl], a
 
     ; 加速度が256に満たない場合は速度は増加させない。
     jr nc, .getYSpeed
 
-    ; 速度のアドレスを計算する。
+    ; 速度を取得する。
     pop hl
     push hl
     ld bc, CH_SPEED_Y
     add hl, bc
+    ld a, [hl]
+
+    ; 速度が上限に達している場合は速度を変更しない。
+    cp a, e
+    jr z, .setYPosition
 
     ; 速度を加算する。
-    ld a, [hl]
     inc a
-
-    ; 速度が上限に達している場合は上限値を設定する。
-    cp a, MAX_FALL_SPEED
-    jr c, .setYSpeed
-    ld a, MAX_FALL_SPEED
-   
-.setYSpeed
-
-    ; 速度を変更する。
     ld [hl], a
     jr .setYPosition
 
@@ -666,8 +750,6 @@ FallCharacter:
 
     ; キャラクターデータのアドレスをスタックから復元する。
     pop hl
-
-.finish
 
     ret
 
