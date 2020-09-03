@@ -323,11 +323,13 @@ UpdatePlayer:
     ; 左方向への歩行処理を行う。
     ld b, BUTTON_LEFT
     ld c, -1
+    ld d, -1
     call WalkPlayer
 
     ; 右方向への歩行処理を行う。
     ld b, BUTTON_RIGHT
     ld c, 1
+    ld d, CHARACTER_SIZE
     call WalkPlayer
 
     ; 床に接触しているか調べる。
@@ -592,6 +594,7 @@ CheckInput:
 ; プレイヤーキャラの歩く処理を行う。
 ; @param b [in] チェックするボタン
 ; @param c [in] x方向の移動量
+; @param d [in] 左なら-1、右ならキャラクターの幅を設定する。
 WalkPlayer:
 
     ; bで指定されたキーが押されているかチェックする。
@@ -604,6 +607,12 @@ WalkPlayer:
     add a, c
     ld [player_data + CH_POS_X], a
 
+    ; ブロックに衝突したか調べる。
+    push bc
+    call CheckSideBlock
+    pop bc
+    ld d, a
+
     ; 移動量がプラスかマイナスかチェックする。
     ld a, c
     cp a, $80
@@ -613,6 +622,10 @@ WalkPlayer:
     ld a, [player_data + CH_ATTR]
     and a, ~OAMF_XFLIP
     ld [player_data + CH_ATTR], a
+
+    ; ブロック衝突時の補正値を設定しておく。
+    ld e, 0
+
     jr .animation
 
 .left
@@ -622,7 +635,15 @@ WalkPlayer:
     or a, OAMF_XFLIP
     ld [player_data + CH_ATTR], a
 
+    ; ブロック衝突時の補正値を設定しておく。
+    ld e, $0f
+
 .animation
+
+    ; ブロックに接触している場合はアニメーションせずに位置を補正する。
+    ld a, d
+    and a
+    jr nz, .correctPosition
 
     ; アニメーションを進める。
     ld a, [player_data + CH_ANIM_WAIT]
@@ -634,6 +655,17 @@ WalkPlayer:
     ld a, [player_data + CH_ANIMATION]
     xor a, TILE_NUM_16x16
     ld [player_data + CH_ANIMATION], a
+    ret
+
+.correctPosition
+
+    ; x座標をブロックの位置に補正する。
+    ld a, [player_data + CH_POS_X]
+    sub a, SPRITE_OFFSET_X
+    add a, e
+    and a, $f0
+    add a, SPRITE_OFFSET_X
+    ld [player_data + CH_POS_X], a
 
     ret
 
@@ -661,6 +693,11 @@ JumpPlayer:
     ; プレイヤーキャラの状態をジャンプ中にする。
     ld a, STATUS_JUMP
     ld [player_status], a
+
+    ret
+
+
+CancelJump:
 
     ret
 
@@ -754,6 +791,7 @@ FallCharacter:
     ret
 
 ; キャラクターが地面に接触しているか調べる。
+; @param a [out] 接触している場合1、そうでない場合は0
 ; @param hl [in] キャラクターデータ
 CheckFloor:
 
@@ -793,16 +831,6 @@ CheckFloor:
     ; x座標が16の倍数でない場合は一つ右側のマップタイルも調べる。
     ld b, a
     and a, $0f
-    jr z, .skip2
-    ld a, 1
-    jr .skip
-
-.skip2
-
-    xor a
-
-.skip
-
     ld [work3], a
     ld a, b
 
@@ -815,38 +843,8 @@ CheckFloor:
     ; x座標マップインデックスをメモリに保持しておく。
     ld [work2], a
 
-    ; マップインデックスを計算する。
-    ; y * width + x
-    ld a, [work1]
-    ld d, a
-    ld a, [map_width]
-    ld e, a
-    xor a
-    ld b, 0
-    ld c, 0
-.loop
-    add a, e
-    jr nc, .cont
-    inc b
-.cont
-    dec d
-    jr nz, .loop
-
-    ld d, a
-    ld a, [work2]
-    add a, d
-    ld c, a
-
-    ; マップのアドレスを取得する。
-    ld a, [map_address_h]
-    ld h, a
-    ld a, [map_address_l]
-    ld l, a
-
     ; 足元のマップタイル情報を取得する。
-    add hl, bc
-    ld a, [hl]
-    and a, MAP_ATTRIBUTE
+    call GetMapInfo
 
     ; 足元がブロックかどうか調べる。
     cp a, MAP_BLOCK
@@ -902,4 +900,144 @@ CheckFloor:
     ; 足元にブロックがない場合はaを0として終了する。
     xor a
 
+    ret
+
+; キャラクターが横のブロックに接触しているか調べる。
+; @param a [out] 接触している場合1、そうでない場合は0
+; @param d [in] 左なら-1、右ならキャラクターの幅を設定する。
+; @param hl [in] キャラクターデータ
+CheckSideBlock:
+
+    ; スタックにキャラクターデータのアドレスを保持しておく。
+    push hl
+
+    ; y座標を取得する。
+    pop hl
+    push hl
+    ld bc, CH_POS_Y
+    add hl, bc
+    ld a, [hl]
+
+    ; スプライト座標のオフセット分を減算する。
+    sub a, SPRITE_OFFSET_Y
+
+    ; y座標が16の倍数でない場合は一つ下のマップタイルも調べる。
+    ld b, a
+    and a, $0f
+    ld [work3], a
+    ld a, b
+
+    ; 16で割って、座標からマップインデックスに換算する。
+    srl a
+    srl a
+    srl a
+    srl a
+
+    ; y座標マップインデックスをメモリに保持しておく。
+    ld [work1], a
+
+    ; x座標を取得する。
+    pop hl
+    push hl
+    ld a, [hl]
+
+    ; スプライト座標のオフセット分を減算する。
+    sub a, SPRITE_OFFSET_X
+
+    ; 左を調べる場合は-1、右を調べる場合はキャラクター幅を加算して、
+    ; チェックするx座標を計算する。
+    add a, d
+
+    ; 16で割って、座標からマップインデックスに換算する。
+    srl a
+    srl a
+    srl a
+    srl a
+
+    ; x座標マップインデックスをメモリに保持しておく。
+    ld [work2], a
+
+    ; 横のマップタイル情報を取得する。
+    call GetMapInfo
+
+    ; 横がブロックかどうか調べる。
+    cp a, MAP_BLOCK
+    jr z, .hitFloor
+
+    ; 2つのタイルにまたいでいる場合は下のタイルもチェックする。
+    ld a, [work3]
+    and a
+    jr z, .finish
+
+    ld b, 0
+    ld a, [map_width]
+    ld c, a
+    add hl, bc
+    ld a, [hl]
+    and a, MAP_ATTRIBUTE
+
+    ; 横がブロックかどうか調べる。
+    cp a, MAP_BLOCK
+    jr nz, .finish
+
+.hitFloor
+
+    ; キャラクターデータのアドレスをスタックから復元する。
+    pop hl
+
+    ; 横にブロックがある場合はaを1として終了する。
+    ld a, 1
+
+    ret
+
+.finish
+
+    ; キャラクターデータのアドレスをスタックから復元する。
+    pop hl
+
+    ; 横にブロックがない場合はaを0として終了する。
+    xor a
+
+    ret
+
+; 指定した座標のマップ情報を取得する。
+; @param a [out] マップ情報
+; @param hl [out] マップタイルのアドレス
+; @param work1 [in] y座標マップインデックス
+; @param work2 [in] x座標マップインデックス
+GetMapInfo:
+
+    ; マップインデックスを計算する。
+    ; y * width + x
+    ld a, [work1]
+    ld d, a
+    ld a, [map_width]
+    ld e, a
+    xor a
+    ld b, 0
+    ld c, 0
+.loop
+    add a, e
+    jr nc, .cont
+    inc b
+.cont
+    dec d
+    jr nz, .loop
+
+    ld d, a
+    ld a, [work2]
+    add a, d
+    ld c, a
+
+    ; マップのアドレスを取得する。
+    ld a, [map_address_h]
+    ld h, a
+    ld a, [map_address_l]
+    ld l, a
+
+    ; マップタイル情報を取得する。
+    add hl, bc
+    ld a, [hl]
+    and a, MAP_ATTRIBUTE
+    
     ret
