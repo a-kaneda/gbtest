@@ -333,7 +333,8 @@ UpdatePlayer:
 
     ; 床に接触しているか調べる。
     ld hl, player_data
-    call CheckFloor
+    ld d, CHARACTER_SIZE
+    call CheckVertical
     ld b, a
 
     ; プレイヤーキャラの状態に着地状態を保存する。
@@ -791,14 +792,31 @@ FallCharacter:
     add a, [hl]
     ld [hl], a
 
-    ; 速度が正数（落下）の場合、地面と接触したかチェックする。
+    ; 速度が0の場合は処理を終了する。
     ld a, d
+    and a
+    jr z, .finish
+
+    ; 速度が正か負か調べる。
     cp a, $80
-    jr nc, .finish
+    jr c, .checkFloor
+
+    ; 速度が負数（上昇）の場合、天井と接触したかチェックする。
+    ld d, -1
+    ld e, $0f
+    jr .checkHitBlock
+
+.checkFloor
+
+    ; 速度が正数（落下）の場合、地面と接触したかチェックする。
+    ld d, CHARACTER_SIZE
+    ld e, 0
+
+.checkHitBlock
 
     pop hl
     push hl
-    call CheckFloor
+    call CheckVertical
 
     ; 接触していなければ、処理を終了する。
     and a, STATUS_LANDED
@@ -812,6 +830,7 @@ FallCharacter:
 
     ; 位置をブロックの位置に補正する。
     ld a, [hl]
+    add a, e
     and a, $f0
     ld [hl], a
 
@@ -834,6 +853,15 @@ FallCharacter:
     ; 加速度を0にする。
     ld [hl], a
 
+    ; ジャンプ時間のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_JUMP_TIME
+    add hl, bc
+
+    ; ジャンプ時間を0にする。
+    ld [hl], a
+
 .finish
 
     ; キャラクターデータのアドレスをスタックから復元する。
@@ -843,8 +871,9 @@ FallCharacter:
 
 ; キャラクターが地面に接触しているか調べる。
 ; @param a [out] 接触している場合1、そうでない場合は0
+; @param d [in] 上なら-1、下ならキャラクターの高さを設定する。
 ; @param hl [in] キャラクターデータ
-CheckFloor:
+CheckVertical:
 
     ; スタックにキャラクターデータのアドレスを保持しておく。
     push hl
@@ -859,8 +888,9 @@ CheckFloor:
     ; スプライト座標のオフセット分を減算する。
     sub a, SPRITE_OFFSET_Y
 
-    ; 高さを加算し、足下の座標を計算する。
-    add a, CHARACTER_SIZE
+    ; 上を調べる場合は-1、下を調べる場合はキャラクター高さを加算して、
+    ; チェックするx座標を計算する。
+    add a, d
     
     ; 16で割って、座標からマップインデックスに換算する。
     srl a
