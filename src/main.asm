@@ -346,6 +346,9 @@ UpdatePlayer:
     ; ジャンプ処理を行う。
     call JumpPlayer
 
+    ; ジャンプキャンセル処理を行う。
+    call CancelJump
+
     ; 落下処理を行う。
     call FallCharacter
 
@@ -677,19 +680,29 @@ JumpPlayer:
     ld a, JUMP_SPEED
     ld [player_data + CH_SPEED_Y], a
 
-    ; 位置に加算する。
-    ld a, [player_data + CH_POS_Y]
-    add a, JUMP_SPEED
-    ld [player_data + CH_POS_Y], a
-
     ; ジャンプ時間を設定する。
     ld a, JUMP_TIME
     ld [player_data + CH_JUMP_TIME], a
     
     ret
 
-
+; ジャンプボタンがジャンプ途中で離された場合は
+; ジャンプ時間を0にし、小ジャンプとする。
 CancelJump:
+
+    ; ジャンプ時間が設定されていない場合は処理を終了する。
+    ld a, [player_data + CH_JUMP_TIME]
+    and a
+    ret z
+
+    ; Aボタンが離されているかチェックする。
+    ld a, [holdedButton]
+    and BUTTON_A
+    ret nz
+
+    ; ジャンプ時間を0にする。
+    xor a
+    ld [player_data + CH_JUMP_TIME], a
 
     ret
 
