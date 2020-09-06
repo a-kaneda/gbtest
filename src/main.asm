@@ -47,11 +47,11 @@ CH_ACCEL_Y          equ 5
 CH_ANIMATION        equ 6
 CH_ANIM_WAIT        equ 7
 CH_JUMP_TIME        equ 8
-CH_DATA_SIZE        equ 9
+CH_STATUS           equ 9
+CH_DATA_SIZE        equ 10
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
-STATUS_NORMAL       equ 0
-STATUS_JUMP         equ 1
+STATUS_LANDED       equ %00000001
 JUMP_SPEED          equ -4
 JUMP_ACCEL          equ $30
 JUMP_TIME           equ 20
@@ -71,7 +71,6 @@ work1               ds 1
 work2               ds 1
 work3               ds 1
 player_data         ds CH_DATA_SIZE
-player_status       ds 1
 map_width           ds 1
 map_address_h       ds 1
 map_address_l       ds 1
@@ -335,34 +334,25 @@ UpdatePlayer:
     ; 床に接触しているか調べる。
     ld hl, player_data
     call CheckFloor
-    cp a, 1
-    jr z, .jump
+    ld b, a
 
-    ; プレイヤーキャラの状態をジャンプ中にする。
-    ld a, STATUS_JUMP
-    ld [player_status], a
-
-    ; 落下処理を行う。
-    call FallCharacter
-
-    jr .setAnimation
-
-.jump
-
-    ; プレイヤーキャラの状態を通常にする。
-    ld a, STATUS_NORMAL
-    ld [player_status], a
+    ; プレイヤーキャラの状態に着地状態を保存する。
+    ld a, [player_data + CH_STATUS]
+    and a, ~STATUS_LANDED
+    or a, b
+    ld [player_data + CH_STATUS], a
 
     ; ジャンプ処理を行う。
     call JumpPlayer
 
-.setAnimation
+    ; 落下処理を行う。
+    call FallCharacter
 
     ; プレイヤーの状態を取得する。
-    ld a, [player_status]
+    ld a, [player_data + CH_STATUS]
 
     ; ジャンプ中の場合は0番目固定とする。
-    cp a, STATUS_JUMP
+    and a, STATUS_LANDED
     jr nz, .setTilePos
     xor a
     ld [player_data + CH_ANIMATION], a
@@ -672,6 +662,11 @@ WalkPlayer:
 ; プレイヤーキャラのジャンプする処理を行う。
 JumpPlayer:
 
+    ; 着地していない場合は処理を終了する。
+    ld a, [player_data + CH_STATUS]
+    and a, STATUS_LANDED
+    ret z
+
     ; Aボタンが押されているかチェックする。
     ld a, [pressedButton]
     and BUTTON_A
@@ -690,10 +685,6 @@ JumpPlayer:
     ld a, JUMP_TIME
     ld [player_data + CH_JUMP_TIME], a
     
-    ; プレイヤーキャラの状態をジャンプ中にする。
-    ld a, STATUS_JUMP
-    ld [player_status], a
-
     ret
 
 
@@ -727,6 +718,18 @@ FallCharacter:
 
 .fall
 
+    ; 状態のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_STATUS
+    add hl, bc
+
+    ; 地面に接触している場合は処理を終了する。
+    ld a, [hl]
+    and a, STATUS_LANDED
+    jr nz, .finish
+
+    ; 地面に接触していない場合は落下加速度を設定する。
     ld d, FALL_ACCEL
     ld e, MAX_FALL_SPEED
 
@@ -775,6 +778,9 @@ FallCharacter:
 
 .setYPosition
 
+    ; 速度を記憶する。
+    ld d, a
+
     ; 位置のアドレスを計算する。
     pop hl
     push hl
@@ -784,6 +790,51 @@ FallCharacter:
     ; 位置を加算する。
     add a, [hl]
     ld [hl], a
+
+    ; 速度が正数（落下）の場合、地面と接触したかチェックする。
+    ld a, d
+    cp a, $80
+    jr nc, .finish
+
+    pop hl
+    push hl
+    call CheckFloor
+
+    ; 接触していなければ、処理を終了する。
+    and a, STATUS_LANDED
+    jr z, .finish
+
+    ; 位置のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_POS_Y
+    add hl, bc
+
+    ; 位置をブロックの位置に補正する。
+    ld a, [hl]
+    and a, $f0
+    ld [hl], a
+
+    ; 速度のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_SPEED_Y
+    add hl, bc
+
+    ; 速度を0にする。
+    xor a
+    ld [hl], a
+
+    ; 加速度のアドレスを計算する。
+    pop hl
+    push hl
+    ld bc, CH_ACCEL_Y
+    add hl, bc
+
+    ; 加速度を0にする。
+    ld [hl], a
+
+.finish
 
     ; キャラクターデータのアドレスをスタックから復元する。
     pop hl
@@ -848,7 +899,7 @@ CheckFloor:
 
     ; 足元がブロックかどうか調べる。
     cp a, MAP_BLOCK
-    jr z, .hitFloor
+    jr z, .setLanded
 
     ; 2つのタイルにまたいでいる場合は右側のタイルもチェックする。
     ld a, [work3]
@@ -863,32 +914,13 @@ CheckFloor:
     cp a, MAP_BLOCK
     jr nz, .finish
 
-.hitFloor
-
-    ; 速度のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_SPEED_Y
-    add hl, bc
-
-    ; 速度を0にする。
-    xor a
-    ld [hl], a
-
-    ; 加速度のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_ACCEL_Y
-    add hl, bc
-
-    ; 加速度を0にする。
-    ld [hl], a
+.setLanded
 
     ; キャラクターデータのアドレスをスタックから復元する。
     pop hl
 
     ; 足元にブロックがある場合はaを1として終了する。
-    inc a
+    ld a, STATUS_LANDED
 
     ret
 
