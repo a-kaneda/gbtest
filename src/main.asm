@@ -1,6 +1,7 @@
 include	"hardware.inc"
 include "image_back.inc"
 include "image_player.inc"
+include "image_monster01.inc"
 include "map001.inc"
 
 ; ================================================================
@@ -17,7 +18,10 @@ TILENUM_BACK_001    equ 0
 TILELEN_BACK_001    equ 8
 TILENUM_PLAYER_01   equ (TILENUM_BACK_001 + TILELEN_BACK_001)
 TILELEN_PLAYER      equ 8
+TILENUM_MONSTER_01  equ (TILENUM_PLAYER_01 + TILELEN_PLAYER)
+TILELEN_MONSTER_01  equ 8
 SPRNUM_PLAYER       equ 0
+SPRNUM_ENEMY        equ 4
 SPRITE_POS_Y        equ 0
 SPRITE_POS_X        equ 1
 SPRITE_NUM          equ 2
@@ -42,13 +46,14 @@ CH_POS_X            equ 0
 CH_POS_Y            equ 1
 CH_TILE             equ 2
 CH_ATTR             equ 3
-CH_SPEED_Y          equ 4
-CH_ACCEL_Y          equ 5
-CH_ANIMATION        equ 6
-CH_ANIM_WAIT        equ 7
-CH_JUMP_TIME        equ 8
-CH_STATUS           equ 9
-CH_DATA_SIZE        equ 10
+CH_POS_X_DEC        equ 4
+CH_SPEED_Y          equ 5
+CH_ACCEL_Y          equ 6
+CH_ANIMATION        equ 7
+CH_ANIM_WAIT        equ 8
+CH_JUMP_TIME        equ 9
+CH_STATUS           equ 10
+CH_DATA_SIZE        equ 11
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
 STATUS_LANDED       equ %00000001
@@ -70,7 +75,9 @@ holdedButton        ds 1
 work1               ds 1
 work2               ds 1
 work3               ds 1
+work4               ds 1
 player_data         ds CH_DATA_SIZE
+enemy_data          ds CH_DATA_SIZE
 map_width           ds 1
 map_address_h       ds 1
 map_address_l       ds 1
@@ -236,6 +243,11 @@ Main:
     ld bc, TILELEN_PLAYER * TILE_SIZE
     call CopyMemory
 
+    ld hl, ImageMonster01
+    ld de, _VRAM + TILENUM_MONSTER_01 * TILE_SIZE
+    ld bc, TILELEN_MONSTER_01 * TILE_SIZE
+    call CopyMemory
+
     ld hl, _SCRN0
     ld bc, BG_WIDTH * BG_HEIGHT
     call ClearMemory
@@ -259,7 +271,11 @@ Main:
     ld a, OAMF_PAL1
     ld [player_data + CH_ATTR], a
 
+    ; スライムを作成する。
+    call CreateMonster01
+
     call UpdatePlayer
+    call UpdateCharacter
     call OAM_DMA
 
     ld a, LCDCF_ON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_BGON | LCDCF_OBJ8 | LCDCF_OBJON
@@ -280,6 +296,7 @@ MainLoop:
     call OAM_DMA
     call CheckInput
     call UpdatePlayer
+    call UpdateCharacter
 
     jp MainLoop
 
@@ -392,7 +409,7 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
 
 .setTileNumber
-    ; 各タイルのタイル番号を設定するｌ
+    ; 各タイルのタイル番号を設定する。
     ld a, [player_data + CH_TILE]
     ld b, a
     ld a, [player_data + CH_ANIMATION]
@@ -1115,4 +1132,244 @@ GetMapInfo:
     ld a, [hl]
     and a, MAP_ATTRIBUTE
     
+    ret
+
+; モンスター01(スライム)を作成する。
+CreateMonster01:
+
+    ld hl, enemy_data
+    ld d, 144
+    ld e, 112
+
+    ; スタックにキャラクターデータのアドレスを保持しておく。
+    push hl
+
+    ; X座標を設定する。
+    ld a, d
+    add a, SPRITE_OFFSET_X
+    ld [hl], a
+
+    ; y座標を設定する。
+    pop hl
+    push hl
+    ld bc, CH_POS_Y
+    add hl, bc
+    ld a, e
+    add a, SPRITE_OFFSET_Y
+    ld [hl], a
+
+    ; タイル番号を設定する。
+    pop hl
+    push hl
+    ld bc, CH_TILE
+    add hl, bc
+    ld a, TILENUM_MONSTER_01
+    ld [hl], a
+
+    ; 属性を設定する。
+    pop hl
+    push hl
+    ld bc, CH_ATTR
+    add hl, bc
+    ld a, OAMF_XFLIP
+    ld [hl], a
+
+    ; キャラクターデータのアドレスをスタックから復元する。
+    pop hl
+
+    ret 
+
+; キャラクターの状態を更新する。
+UpdateCharacter:
+
+    ld hl, enemy_data
+
+    ; スタックにキャラクターデータのアドレスを保持しておく。
+    push hl
+
+    ; キャラクターの移動処理を行う。
+    call MoveMonster01
+
+    ; y座標を取得する。
+    pop hl
+    push hl
+    ld bc, CH_POS_Y
+    add hl, bc
+    ld a, [hl]
+
+    ; 各タイルのy座標を設定する。
+    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_POS_Y
+    ld bc, SPRNUM_ENEMY * SPRITE_SIZE
+    ; 左上のタイルを設定する。
+    ld [hl], a
+    ; 左下のタイルを設定する。
+    add TILE_HEIGHT
+    add hl, bc
+    ld [hl], a
+    ; 右上のタイルを設定する。
+    sub TILE_HEIGHT
+    add hl, bc
+    ld [hl], a
+    ; 右下のタイルを設定する。
+    add TILE_HEIGHT
+    add hl, bc
+    ld [hl], a
+
+    ; x座標を取得する。
+    pop hl
+    push hl
+    ld a, [hl]
+
+    ; 各タイルのy座標を設定する。
+    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_POS_X
+    ld bc, SPRNUM_ENEMY * SPRITE_SIZE
+    ; 左上のタイルを設定する。
+    ld [hl], a
+    ; 左下のタイルを設定する。
+    add hl, bc
+    ld [hl], a
+    ; 右上のタイルを設定する。
+    add TILE_WIDTH
+    add hl, bc
+    ld [hl], a
+    ; 右下のタイルを設定する。
+    add hl, bc
+    ld [hl], a
+
+    ; 属性を取得する。
+    pop hl
+    push hl
+    ld bc, CH_ATTR
+    add hl, bc
+    ld a, [hl]
+    ld [work1], a
+
+    ; 左右反転しているか調べる。
+    and a, OAMF_XFLIP
+    jr nz, .xflip
+
+    ld d, 0
+    jr .serTileNumber
+
+.xflip
+
+    ld d, 2
+
+.serTileNumber
+
+    ; タイル番号を取得する。
+    pop hl
+    push hl
+    ld bc, CH_TILE
+    add hl, bc
+    ld a, [hl]
+    ld e, a
+    
+    ; アニメーションを取得する。
+    pop hl
+    push hl
+    ld bc, CH_ANIMATION
+    add hl, bc
+    ld a, [hl]
+    add a, e
+    ld e, a
+
+    ; 各タイルのタイル番号を設定する。
+    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_NUM
+    ld bc, SPRNUM_ENEMY * SPRITE_SIZE
+
+    ; 左上のタイルを設定する。
+    ld a, d
+    add a, e
+    ld [hl], a
+
+    ; 左下のタイルを設定する。
+    inc d
+    ld a, d
+    add a, e
+    add hl, bc
+    ld [hl], a
+
+    ; 右上のタイルを設定する。
+    inc d
+    ld a, d
+    and a, $03
+    ld d, a
+    add a, e
+    add hl, bc
+    ld [hl], a
+
+    ; 右下のタイルを設定する。
+    inc d
+    ld a, d
+    add a, e
+    add hl, bc
+    ld [hl], a
+
+    ; 各タイルのattributeを設定する。
+    ld a, [work1]
+    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_ATTRIBUTE
+    ld bc, SPRNUM_ENEMY * SPRITE_SIZE
+
+    ; 左上のタイルを設定する。
+    ld [hl], a
+    ; 左下のタイルを設定する。
+    add hl, bc
+    ld [hl], a
+    ; 右上のタイルを設定する。
+    add hl, bc
+    ld [hl], a
+    ; 右下のタイルを設定する。
+    add hl, bc
+    ld [hl], a
+
+    ; キャラクターデータのアドレスをスタックから復元する。
+    pop hl
+    
+    ret
+
+; モンスター01(スライム)を移動する。
+MoveMonster01:
+
+    ; スタックにキャラクターデータのアドレスを保持しておく。
+    push hl
+
+    ; x座標小数部を取得する。
+    pop hl
+    push hl
+    ld bc, CH_POS_X_DEC
+    add hl, bc
+    ld a, [hl]
+
+    ; 左へ移動する。
+    sub a, $20
+    ld [hl], a
+
+    jr nc, .finish
+
+    ; x座標を取得する。
+    pop hl
+    push hl
+    ld a, [hl]
+
+    ; 左へ移動する。
+    dec a
+    
+    ; x座標を設定する。
+    ld [hl], a
+
+    ; アニメーションを進める。
+    pop hl
+    push hl
+    ld bc, CH_ANIMATION
+    add hl, bc
+    ld a, [hl]
+    xor a, TILE_NUM_16x16
+    ld [hl], a
+       
+.finish
+
+    ; キャラクターデータのアドレスをスタックから復元する。
+    pop hl
+
     ret

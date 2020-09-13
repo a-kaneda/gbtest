@@ -1,7 +1,13 @@
 @echo off
 
 SET SRC_NAME=main.asm
-SET IMG_NAME=image_player.z80 image_back.z80 map001.z80
+
+SET IMG_NAME=^
+image_player.z80 ^
+image_monster01.z80 ^
+image_back.z80 ^
+map001.z80
+
 SET APP_NAME=gbtest
 
 cd src
