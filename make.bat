@@ -3,6 +3,7 @@
 SET SRC_NAME=main.asm
 
 SET IMG_NAME=^
+image_font.z80 ^
 image_player.z80 ^
 image_monster01.z80 ^
 image_back.z80 ^

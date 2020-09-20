@@ -1,4 +1,5 @@
 include	"hardware.inc"
+include "image_font.inc"
 include "image_back.inc"
 include "image_player.inc"
 include "image_monster01.inc"
@@ -9,6 +10,7 @@ include "map001.inc"
 ; ================================================================
 
 TILE_SIZE           equ 16
+TILE_SIZE_HALF      equ 8
 TILE_WIDTH          equ 8
 TILE_HEIGHT         equ 8
 TILE_NUM_16x16      equ 4
@@ -16,7 +18,8 @@ BG_WIDTH            equ 32
 BG_HEIGHT           equ 32
 TILENUM_BACK_001    equ 0
 TILELEN_BACK_001    equ 8
-TILENUM_PLAYER_01   equ (TILENUM_BACK_001 + TILELEN_BACK_001)
+TILENUM_FONT        equ (16 * 4)
+TILENUM_PLAYER_01   equ (TILENUM_FONT + ImageFontLen)
 TILELEN_PLAYER      equ 8
 TILENUM_MONSTER_01  equ (TILENUM_PLAYER_01 + TILELEN_PLAYER)
 TILELEN_MONSTER_01  equ 8
@@ -238,6 +241,11 @@ Main:
     ld bc, TILELEN_BACK_001 * TILE_SIZE
     call CopyMemory
 
+    ld hl, ImageFont
+    ld de, _VRAM + TILENUM_FONT * TILE_SIZE
+    ld bc, ImageFontLen * TILE_SIZE_HALF
+    call CopyFont
+
     ld hl, ImagePlayer
     ld de, _VRAM + TILENUM_PLAYER_01 * TILE_SIZE
     ld bc, TILELEN_PLAYER * TILE_SIZE
@@ -317,6 +325,18 @@ CopyMemory:
     ld a, b
     or c
     jr nz, CopyMemory
+    ret
+
+CopyFont:
+    ld a, [hl+]
+    ld [de], a
+    inc de
+    ld [de], a
+    inc de
+    dec bc
+    ld a, b
+    or c
+    jr nz, CopyFont
     ret
 
 ClearMemory:
