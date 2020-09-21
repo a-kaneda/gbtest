@@ -63,6 +63,182 @@ STATUS_LANDED       equ %00000001
 JUMP_SPEED          equ -4
 JUMP_ACCEL          equ $30
 JUMP_TIME           equ 20
+WINDOW_OFFSET_X     equ 7
+STATUS_WIN_POS_X    equ 0
+STATUS_WIN_POS_Y    equ 128
+STATUS_WIN_HP_LABEL equ (_SCRN1 + 1)
+STATUS_WIN_HP_NOW   equ (_SCRN1 + 4)
+STATUS_WIN_HP_SLASH equ (_SCRN1 + 7)
+STATUS_WIN_HP_MAX   equ (_SCRN1 + 8)
+STATUS_WIN_MP_LABEL equ (_SCRN1 + 33)
+STATUS_WIN_MP_NOW   equ (_SCRN1 + 36)
+STATUS_WIN_MP_SLASH equ (_SCRN1 + 39)
+STATUS_WIN_MP_MAX   equ (_SCRN1 + 40)
+STATUS_WIN_GOLD_LABEL   equ (_SCRN1 + 12)
+STATUS_WIN_GOLD_VALUE   equ (_SCRN1 + 14)
+STATUS_WIN_EXP_LABEL    equ (_SCRN1 + 44)
+STATUS_WIN_EXP_VALUE    equ (_SCRN1 + 46)
+
+FONT_BLANK          equ (TILENUM_FONT + 0)
+FONT_NUM_0          equ (TILENUM_FONT + 1)
+FONT_NUM_1          equ (TILENUM_FONT + 2)
+FONT_NUM_2          equ (TILENUM_FONT + 3)
+FONT_NUM_3          equ (TILENUM_FONT + 4)
+FONT_NUM_4          equ (TILENUM_FONT + 5)
+FONT_NUM_5          equ (TILENUM_FONT + 6)
+FONT_NUM_6          equ (TILENUM_FONT + 7)
+FONT_NUM_7          equ (TILENUM_FONT + 8)
+FONT_NUM_8          equ (TILENUM_FONT + 9)
+FONT_NUM_9          equ (TILENUM_FONT + 10)
+FONT_ENG_A          equ (TILENUM_FONT + 11)
+FONT_ENG_B          equ (TILENUM_FONT + 12)
+FONT_ENG_C          equ (TILENUM_FONT + 13)
+FONT_ENG_D          equ (TILENUM_FONT + 14)
+FONT_ENG_E          equ (TILENUM_FONT + 15)
+FONT_ENG_F          equ (TILENUM_FONT + 16)
+FONT_ENG_G          equ (TILENUM_FONT + 17)
+FONT_ENG_H          equ (TILENUM_FONT + 18)
+FONT_ENG_I          equ (TILENUM_FONT + 19)
+FONT_ENG_J          equ (TILENUM_FONT + 20)
+FONT_ENG_K          equ (TILENUM_FONT + 21)
+FONT_ENG_L          equ (TILENUM_FONT + 22)
+FONT_ENG_M          equ (TILENUM_FONT + 23)
+FONT_ENG_N          equ (TILENUM_FONT + 24)
+FONT_ENG_O          equ (TILENUM_FONT + 25)
+FONT_ENG_P          equ (TILENUM_FONT + 26)
+FONT_ENG_Q          equ (TILENUM_FONT + 27)
+FONT_ENG_R          equ (TILENUM_FONT + 28)
+FONT_ENG_S          equ (TILENUM_FONT + 29)
+FONT_ENG_T          equ (TILENUM_FONT + 30)
+FONT_ENG_U          equ (TILENUM_FONT + 31)
+FONT_ENG_V          equ (TILENUM_FONT + 32)
+FONT_ENG_W          equ (TILENUM_FONT + 33)
+FONT_ENG_X          equ (TILENUM_FONT + 34)
+FONT_ENG_Y          equ (TILENUM_FONT + 35)
+FONT_ENG_Z          equ (TILENUM_FONT + 36)
+FONT_HIRA_A         equ (TILENUM_FONT + 37)
+FONT_HIRA_I         equ (TILENUM_FONT + 38)
+FONT_HIRA_U         equ (TILENUM_FONT + 39)
+FONT_HIRA_E         equ (TILENUM_FONT + 40)
+FONT_HIRA_O         equ (TILENUM_FONT + 41)
+FONT_HIRA_KA        equ (TILENUM_FONT + 42)
+FONT_HIRA_KI        equ (TILENUM_FONT + 43)
+FONT_HIRA_KU        equ (TILENUM_FONT + 44)
+FONT_HIRA_KE        equ (TILENUM_FONT + 45)
+FONT_HIRA_KO        equ (TILENUM_FONT + 46)
+FONT_HIRA_SA        equ (TILENUM_FONT + 47)
+FONT_HIRA_SI        equ (TILENUM_FONT + 48)
+FONT_HIRA_SU        equ (TILENUM_FONT + 49)
+FONT_HIRA_SE        equ (TILENUM_FONT + 50)
+FONT_HIRA_SO        equ (TILENUM_FONT + 51)
+FONT_HIRA_TA        equ (TILENUM_FONT + 52)
+FONT_HIRA_TI        equ (TILENUM_FONT + 53)
+FONT_HIRA_TU        equ (TILENUM_FONT + 54)
+FONT_HIRA_TE        equ (TILENUM_FONT + 55)
+FONT_HIRA_TO        equ (TILENUM_FONT + 56)
+FONT_HIRA_NA        equ (TILENUM_FONT + 57)
+FONT_HIRA_NI        equ (TILENUM_FONT + 58)
+FONT_HIRA_NU        equ (TILENUM_FONT + 59)
+FONT_HIRA_NE        equ (TILENUM_FONT + 60)
+FONT_HIRA_NO        equ (TILENUM_FONT + 61)
+FONT_HIRA_HA        equ (TILENUM_FONT + 62)
+FONT_HIRA_HI        equ (TILENUM_FONT + 63)
+FONT_HIRA_HU        equ (TILENUM_FONT + 64)
+FONT_HIRA_HE        equ (TILENUM_FONT + 65)
+FONT_HIRA_HO        equ (TILENUM_FONT + 66)
+FONT_HIRA_MA        equ (TILENUM_FONT + 67)
+FONT_HIRA_MI        equ (TILENUM_FONT + 68)
+FONT_HIRA_MU        equ (TILENUM_FONT + 69)
+FONT_HIRA_ME        equ (TILENUM_FONT + 70)
+FONT_HIRA_MO        equ (TILENUM_FONT + 71)
+FONT_HIRA_YA        equ (TILENUM_FONT + 72)
+FONT_HIRA_YU        equ (TILENUM_FONT + 73)
+FONT_HIRA_YO        equ (TILENUM_FONT + 74)
+FONT_HIRA_RA        equ (TILENUM_FONT + 75)
+FONT_HIRA_RI        equ (TILENUM_FONT + 76)
+FONT_HIRA_RU        equ (TILENUM_FONT + 77)
+FONT_HIRA_RE        equ (TILENUM_FONT + 78)
+FONT_HIRA_RO        equ (TILENUM_FONT + 79)
+FONT_HIRA_WA        equ (TILENUM_FONT + 80)
+FONT_HIRA_WO        equ (TILENUM_FONT + 81)
+FONT_HIRA_N         equ (TILENUM_FONT + 82)
+FONT_HIRA_LA        equ (TILENUM_FONT + 83)
+FONT_HIRA_LI        equ (TILENUM_FONT + 84)
+FONT_HIRA_LU        equ (TILENUM_FONT + 85)
+FONT_HIRA_LE        equ (TILENUM_FONT + 86)
+FONT_HIRA_LO        equ (TILENUM_FONT + 87)
+FONT_HIRA_LTU       equ (TILENUM_FONT + 88)
+FONT_HIRA_LYA       equ (TILENUM_FONT + 89)
+FONT_HIRA_LYU       equ (TILENUM_FONT + 90)
+FONT_HIRA_LYO       equ (TILENUM_FONT + 91)
+FONT_HIRA_LWA       equ (TILENUM_FONT + 92)
+FONT_KATA_A         equ (TILENUM_FONT + 93)
+FONT_KATA_I         equ (TILENUM_FONT + 94)
+FONT_KATA_U         equ (TILENUM_FONT + 95)
+FONT_KATA_E         equ (TILENUM_FONT + 96)
+FONT_KATA_O         equ (TILENUM_FONT + 97)
+FONT_KATA_KA        equ (TILENUM_FONT + 98)
+FONT_KATA_KI        equ (TILENUM_FONT + 99)
+FONT_KATA_KU        equ (TILENUM_FONT + 100)
+FONT_KATA_KE        equ (TILENUM_FONT + 101)
+FONT_KATA_KO        equ (TILENUM_FONT + 102)
+FONT_KATA_SA        equ (TILENUM_FONT + 103)
+FONT_KATA_SI        equ (TILENUM_FONT + 104)
+FONT_KATA_SU        equ (TILENUM_FONT + 105)
+FONT_KATA_SE        equ (TILENUM_FONT + 106)
+FONT_KATA_SO        equ (TILENUM_FONT + 107)
+FONT_KATA_TA        equ (TILENUM_FONT + 108)
+FONT_KATA_TI        equ (TILENUM_FONT + 109)
+FONT_KATA_TU        equ (TILENUM_FONT + 110)
+FONT_KATA_TE        equ (TILENUM_FONT + 111)
+FONT_KATA_TO        equ (TILENUM_FONT + 112)
+FONT_KATA_NA        equ (TILENUM_FONT + 113)
+FONT_KATA_NI        equ (TILENUM_FONT + 114)
+FONT_KATA_NU        equ (TILENUM_FONT + 115)
+FONT_KATA_NE        equ (TILENUM_FONT + 116)
+FONT_KATA_NO        equ (TILENUM_FONT + 117)
+FONT_KATA_HA        equ (TILENUM_FONT + 118)
+FONT_KATA_HI        equ (TILENUM_FONT + 119)
+FONT_KATA_HU        equ (TILENUM_FONT + 120)
+FONT_KATA_HE        equ (TILENUM_FONT + 121)
+FONT_KATA_HO        equ (TILENUM_FONT + 122)
+FONT_KATA_MA        equ (TILENUM_FONT + 123)
+FONT_KATA_MI        equ (TILENUM_FONT + 124)
+FONT_KATA_MU        equ (TILENUM_FONT + 125)
+FONT_KATA_ME        equ (TILENUM_FONT + 126)
+FONT_KATA_MO        equ (TILENUM_FONT + 127)
+FONT_KATA_YA        equ (TILENUM_FONT + 128)
+FONT_KATA_YU        equ (TILENUM_FONT + 129)
+FONT_KATA_YO        equ (TILENUM_FONT + 130)
+FONT_KATA_RA        equ (TILENUM_FONT + 131)
+FONT_KATA_RI        equ (TILENUM_FONT + 132)
+FONT_KATA_RU        equ (TILENUM_FONT + 133)
+FONT_KATA_RE        equ (TILENUM_FONT + 134)
+FONT_KATA_RO        equ (TILENUM_FONT + 135)
+FONT_KATA_WA        equ (TILENUM_FONT + 136)
+FONT_KATA_WO        equ (TILENUM_FONT + 137)
+FONT_KATA_N         equ (TILENUM_FONT + 138)
+FONT_KATA_LA        equ (TILENUM_FONT + 139)
+FONT_KATA_LI        equ (TILENUM_FONT + 140)
+FONT_KATA_LU        equ (TILENUM_FONT + 141)
+FONT_KATA_LE        equ (TILENUM_FONT + 142)
+FONT_KATA_LO        equ (TILENUM_FONT + 143)
+FONT_KATA_LTU       equ (TILENUM_FONT + 144)
+FONT_KATA_LYA       equ (TILENUM_FONT + 145)
+FONT_KATA_LYU       equ (TILENUM_FONT + 146)
+FONT_KATA_LYO       equ (TILENUM_FONT + 147)
+FONT_KATA_LWA       equ (TILENUM_FONT + 148)
+FONT_DAKUTEN        equ (TILENUM_FONT + 149)
+FONT_HANDAKUTEN     equ (TILENUM_FONT + 150)
+FONT_TYOUON         equ (TILENUM_FONT + 151)
+FONT_QUESTION       equ (TILENUM_FONT + 152)
+FONT_EXLAMATION     equ (TILENUM_FONT + 153)
+FONT_DOT            equ (TILENUM_FONT + 154)
+FONT_L_BRACKET      equ (TILENUM_FONT + 155)
+FONT_R_BRACKET      equ (TILENUM_FONT + 156)
+FONT_L_BRACKET2     equ (TILENUM_FONT + 157)
+FONT_R_BRACKET2     equ (TILENUM_FONT + 158)
+FONT_SLASH          equ (TILENUM_FONT + 159)
 
 ; ================================================================
 ; Variable definitions
@@ -80,6 +256,7 @@ work2               ds 1
 work3               ds 1
 work4               ds 1
 player_data         ds CH_DATA_SIZE
+player_hp           ds 2
 enemy_data          ds CH_DATA_SIZE
 map_width           ds 1
 map_address_h       ds 1
@@ -260,14 +437,22 @@ Main:
     ld bc, BG_WIDTH * BG_HEIGHT
     call ClearMemory
 
+    ld hl, _SCRN1
+    ld bc, BG_WIDTH * BG_HEIGHT
+    call ClearMemory
+
     ld hl, _SCRN0
     ld de, Map001
     ld bc, Map001Height * $100 + Map001Width
     call CopyMap
 
+
     ; マップの幅を設定する。
     ld a, Map001Width
     ld [map_width], a
+
+    ; ウィンドウを作成する。
+    call CreateStatusWindow
 
     ; プレイヤーキャラの初期状態を設定する。
     ld a, 16 + SPRITE_OFFSET_X
@@ -284,9 +469,10 @@ Main:
 
     call UpdatePlayer
     call UpdateCharacter
+    call UpdateStatusWindow
     call OAM_DMA
 
-    ld a, LCDCF_ON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_BGON | LCDCF_OBJ8 | LCDCF_OBJON
+    ld a, LCDCF_ON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_BGON | LCDCF_OBJ8 | LCDCF_OBJON | LCDCF_WIN9C00 | LCDCF_WINON
     ld [rLCDC], a
 
     ld a, IEF_VBLANK
@@ -305,6 +491,7 @@ MainLoop:
     call CheckInput
     call UpdatePlayer
     call UpdateCharacter
+    call UpdateStatusWindow
 
     jp MainLoop
 
@@ -388,6 +575,16 @@ UpdatePlayer:
 
     ; 落下処理を行う。
     call FallCharacter
+
+    ; テスト用にHPをインクリメントする。
+    ld a, [player_hp]
+    inc a
+    daa
+    ld [player_hp], a
+    ld a, [player_hp + 1]
+    adc a, 0
+    daa
+    ld [player_hp + 1], a
 
     ; プレイヤーの状態を取得する。
     ld a, [player_data + CH_STATUS]
@@ -1159,7 +1356,7 @@ CreateMonster01:
 
     ld hl, enemy_data
     ld d, 144
-    ld e, 112
+    ld e, 96
 
     ; スタックにキャラクターデータのアドレスを保持しておく。
     push hl
@@ -1393,3 +1590,124 @@ MoveMonster01:
     pop hl
 
     ret
+
+; ステータスウィンドウを作成する。
+CreateStatusWindow:
+
+    ; ウィンドウの位置を設定する。
+    ld a, STATUS_WIN_POS_X + WINDOW_OFFSET_X
+    ld [rWX], a
+    ld a, STATUS_WIN_POS_Y
+    ld [rWY], a
+
+    ; HP欄を作成する。
+    ld a, FONT_ENG_H
+    ld [STATUS_WIN_HP_LABEL], a
+    ld a, FONT_ENG_P
+    ld [STATUS_WIN_HP_LABEL + 1], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_HP_NOW], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_HP_NOW + 1], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_HP_NOW + 2], a
+    ld a, FONT_SLASH
+    ld [STATUS_WIN_HP_SLASH], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_HP_MAX], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_HP_MAX + 1], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_HP_MAX + 2], a
+
+    ; MP欄を作成する。
+    ld a, FONT_ENG_M
+    ld [STATUS_WIN_MP_LABEL], a
+    ld a, FONT_ENG_P
+    ld [STATUS_WIN_MP_LABEL + 1], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_MP_NOW], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_MP_NOW + 1], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_MP_NOW + 2], a
+    ld a, FONT_SLASH
+    ld [STATUS_WIN_MP_SLASH], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_MP_MAX], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_MP_MAX + 1], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_MP_MAX + 2], a
+
+    ; GOLD欄を作成する。
+    ld a, FONT_ENG_G
+    ld [STATUS_WIN_GOLD_LABEL], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_GOLD_VALUE], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_GOLD_VALUE + 1], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_GOLD_VALUE + 2], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_GOLD_VALUE + 3], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_GOLD_VALUE + 4], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_GOLD_VALUE + 5], a
+
+    ; Exp欄を作成する。
+    ld a, FONT_ENG_E
+    ld [STATUS_WIN_EXP_LABEL], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_EXP_VALUE], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_EXP_VALUE + 1], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_EXP_VALUE + 2], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_EXP_VALUE + 3], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_EXP_VALUE + 4], a
+    ld a, FONT_NUM_0
+    ld [STATUS_WIN_EXP_VALUE + 5], a
+
+    ret
+
+; ステータスウィンドウの現在値の表示を更新する。
+UpdateStatusWindow:
+
+    ; HP現在値の3桁目を表示する。
+    ld a, [player_hp + 1]
+    and a, $0f
+    ld b, a
+    jr z, .setBlankToHP3
+    add a, FONT_NUM_0
+    jr .setTileToHP3
+.setBlankToHP3
+    xor a
+.setTileToHP3
+    ld [STATUS_WIN_HP_NOW], a
+
+    ; HP現在値の2桁目を表示する。
+    ld a, [player_hp]
+    swap a
+    and a, $0f
+    ld c, a
+    or a, b
+    jr z, .setBlankToHP2
+    ld a, c
+    add a, FONT_NUM_0
+    jr .setTileToHP2
+.setBlankToHP2
+    xor a
+.setTileToHP2
+    ld [STATUS_WIN_HP_NOW + 1], a
+
+    ; HP現在値の1桁目を表示する。
+    ld a, [player_hp]
+    and a, $0f
+    add a, FONT_NUM_0
+    ld [STATUS_WIN_HP_NOW + 2], a
+
+    ret 

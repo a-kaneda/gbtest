@@ -10,7 +10,7 @@
 ;   Compression          : None.
 ;   Counter              : Tile-count as Constant.
 ;   Tile size            : 8 x 8
-;   Tiles                : 0 to 157
+;   Tiles                : 0 to 159
 ;
 ;   Palette colors       : None.
 ;   SGB Palette          : None.
@@ -26,6 +26,6 @@ ImageFontBank EQU 0
 
 ; Start of tile array.
  GLOBAL ImageFont
-ImageFontLen EQU 158
+ImageFontLen EQU 160
 
 ; End of IMAGE_FONT.INC
