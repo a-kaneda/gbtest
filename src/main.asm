@@ -463,6 +463,10 @@ Main:
     ld [player_data + CH_TILE], a
     ld a, OAMF_PAL1
     ld [player_data + CH_ATTR], a
+    ld a, $99
+    ld [player_hp], a
+    ld a, $09
+    ld [player_hp + 1], a
 
     ; スライムを作成する。
     call CreateMonster01
@@ -576,15 +580,8 @@ UpdatePlayer:
     ; 落下処理を行う。
     call FallCharacter
 
-    ; テスト用にHPをインクリメントする。
-    ld a, [player_hp]
-    inc a
-    daa
-    ld [player_hp], a
-    ld a, [player_hp + 1]
-    adc a, 0
-    daa
-    ld [player_hp + 1], a
+    ; 敵との衝突判定を行う。
+    call CollisionEnemy
 
     ; プレイヤーの状態を取得する。
     ld a, [player_data + CH_STATUS]
@@ -1711,3 +1708,81 @@ UpdateStatusWindow:
     ld [STATUS_WIN_HP_NOW + 2], a
 
     ret 
+
+; プレイヤーと敵との衝突処理を行う。
+CollisionEnemy:
+
+    ; 敵の先頭アドレスをスタックに記憶しておく。
+    ld hl, enemy_data
+    push hl
+
+    ; プレイヤーの右端が敵の左端よりも右側か調べる。
+    ; 敵の左端を取得する。
+    ld a, [hl]
+    ld b, a
+
+    ; プレイヤーの右端を計算する。
+    ld a, [player_data + CH_POS_X]
+    add a, CHARACTER_SIZE
+
+    ; プレイヤーの右端 < 敵の左端の場合は処理を終了する。
+    cp a, b
+    jr c, .finish
+
+    ; プレイヤーの左端が敵の右端よりも左側か調べる。
+    ; プレイヤーの左端を取得する。
+    ld a, [player_data + CH_POS_X]
+    ld b, a
+
+    ; 敵の右端を計算する。
+    ld a, [hl]
+    add a, CHARACTER_SIZE
+
+    ; 敵の右端 < プレイヤーの左端の場合は処理を終了する。
+    cp a, b
+    jr c, .finish
+
+    ; プレイヤーの下端が敵の上端よりも下側か調べる。
+    ; 敵の上端を取得する。
+    ld bc, CH_POS_Y
+    add hl, bc
+    ld a, [hl]
+    ld b, a
+
+    ; プレイヤーの下端を計算する。
+    ld a, [player_data + CH_POS_Y]
+    add a, CHARACTER_SIZE
+
+    ; プレイヤーの右端 < 敵の左端の場合は処理を終了する。
+    cp a, b
+    jr c, .finish
+
+    ; プレイヤーの上端が敵の下端よりも上側か調べる。
+    ; プレイヤーの上端を取得する。
+    ld a, [player_data + CH_POS_Y]
+    ld b, a
+
+    ; 敵の下端を計算する。
+    ld a, [hl]
+    add a, CHARACTER_SIZE
+
+    ; 敵の下端 < プレイヤーの上端の場合は処理を終了する。
+    cp a, b
+    jr c, .finish
+
+    ; 敵との衝突処理を行う。
+    ld a, [player_hp]
+    sub a, 1
+    daa 
+    ld [player_hp], a
+    ld a, [player_hp + 1]
+    sbc a, 0
+    daa 
+    ld [player_hp + 1], a
+
+.finish
+
+    ; 敵の先頭アドレスをスタックから取り除く。
+    pop hl
+
+    ret
