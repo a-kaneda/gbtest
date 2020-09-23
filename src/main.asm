@@ -55,11 +55,14 @@ CH_ACCEL_Y          equ 6
 CH_ANIMATION        equ 7
 CH_ANIM_WAIT        equ 8
 CH_JUMP_TIME        equ 9
-CH_STATUS           equ 10
-CH_DATA_SIZE        equ 11
+CH_BLINK_TIME       equ 10
+CH_BLINK_WAIT       equ 11
+CH_STATUS           equ 12
+CH_DATA_SIZE        equ 13
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
-STATUS_LANDED       equ %00000001
+CH_STAT_LANDED      equ %00000001
+CH_STAT_BLINK       Equ %00000010
 JUMP_SPEED          equ -4
 JUMP_ACCEL          equ $30
 JUMP_TIME           equ 20
@@ -78,6 +81,8 @@ STATUS_WIN_GOLD_LABEL   equ (_SCRN1 + 12)
 STATUS_WIN_GOLD_VALUE   equ (_SCRN1 + 14)
 STATUS_WIN_EXP_LABEL    equ (_SCRN1 + 44)
 STATUS_WIN_EXP_VALUE    equ (_SCRN1 + 46)
+BLINK_INTERVAL      equ 4
+BLINK_TIME          equ 60
 
 FONT_BLANK          equ (TILENUM_FONT + 0)
 FONT_NUM_0          equ (TILENUM_FONT + 1)
@@ -567,7 +572,7 @@ UpdatePlayer:
 
     ; プレイヤーキャラの状態に着地状態を保存する。
     ld a, [player_data + CH_STATUS]
-    and a, ~STATUS_LANDED
+    and a, ~CH_STAT_LANDED
     or a, b
     ld [player_data + CH_STATUS], a
 
@@ -587,11 +592,53 @@ UpdatePlayer:
     ld a, [player_data + CH_STATUS]
 
     ; ジャンプ中の場合は0番目固定とする。
-    and a, STATUS_LANDED
-    jr nz, .setTilePos
+    and a, CH_STAT_LANDED
+    jr nz, .checkBlinkTime
     xor a
     ld [player_data + CH_ANIMATION], a
     ld [player_data + CH_ANIM_WAIT], a
+
+.checkBlinkTime
+
+    ; 点滅時間を取得する。
+    ld a, [player_data + CH_BLINK_TIME]
+    and a
+    jr z, .setTilePos
+
+    ; 点滅時間をカウントする。
+    dec a
+    ld [player_data + CH_BLINK_TIME], a
+
+    ; 点滅切替時間をカウントする。
+    ld a, [player_data + CH_BLINK_WAIT]
+    dec a
+    ld [player_data + CH_BLINK_WAIT], a
+
+    ; キャラクター状態を取得する。
+    ld a, [player_data + CH_STATUS]
+
+    ; 点滅切替時間が経過している場合は透明かどうかを切り替える。
+    jr nz, .checkBlinkStatus
+    xor a, CH_STAT_BLINK
+    ld [player_data + CH_STATUS], a
+
+    ; 点滅切替時間を再設定する。
+    ld a, BLINK_INTERVAL
+    ld [player_data + CH_BLINK_WAIT], a
+
+.checkBlinkStatus
+
+    ; 点滅ステータスがオンの場合は透明にする。
+    and a, CH_STAT_BLINK
+    jr z, .setTilePos
+
+    ; y座標を0にして非表示とする。
+    xor a
+    ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_Y], a
+    ret
 
 .setTilePos
 
@@ -623,6 +670,7 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
 
 .setTileNumber
+
     ; 各タイルのタイル番号を設定する。
     ld a, [player_data + CH_TILE]
     ld b, a
@@ -899,7 +947,7 @@ JumpPlayer:
 
     ; 着地していない場合は処理を終了する。
     ld a, [player_data + CH_STATUS]
-    and a, STATUS_LANDED
+    and a, CH_STAT_LANDED
     ret z
 
     ; Aボタンが押されているかチェックする。
@@ -971,7 +1019,7 @@ FallCharacter:
 
     ; 地面に接触している場合は処理を終了する。
     ld a, [hl]
-    and a, STATUS_LANDED
+    and a, CH_STAT_LANDED
     jr nz, .finish
 
     ; 地面に接触していない場合は落下加速度を設定する。
@@ -1063,7 +1111,7 @@ FallCharacter:
     call CheckVertical
 
     ; 接触していなければ、処理を終了する。
-    and a, STATUS_LANDED
+    and a, CH_STAT_LANDED
     jr z, .finish
 
     ; 位置のアドレスを計算する。
@@ -1194,7 +1242,7 @@ CheckVertical:
     pop hl
 
     ; 足元にブロックがある場合はaを1として終了する。
-    ld a, STATUS_LANDED
+    ld a, CH_STAT_LANDED
 
     ret
 
@@ -1712,6 +1760,11 @@ UpdateStatusWindow:
 ; プレイヤーと敵との衝突処理を行う。
 CollisionEnemy:
 
+    ; 点滅中の場合は当たり判定は行わない。
+    ld a, [player_data + CH_BLINK_TIME]
+    and a
+    ret nz
+
     ; 敵の先頭アドレスをスタックに記憶しておく。
     ld hl, enemy_data
     push hl
@@ -1771,6 +1824,7 @@ CollisionEnemy:
     jr c, .finish
 
     ; 敵との衝突処理を行う。
+    ; HPを減らす。
     ld a, [player_hp]
     sub a, 1
     daa 
@@ -1779,6 +1833,19 @@ CollisionEnemy:
     sbc a, 0
     daa 
     ld [player_hp + 1], a
+
+    ; 無敵状態（点滅）にする。
+    ld a, [player_data + CH_STATUS]
+    or CH_STAT_BLINK
+    ld [player_data + CH_STATUS], a
+
+    ; 点滅時間を設定する。
+    ld a, BLINK_TIME
+    ld [player_data + CH_BLINK_TIME], a
+
+    ; 点滅間隔を設定する。
+    ld a, BLINK_INTERVAL
+    ld [player_data + CH_BLINK_WAIT], a
 
 .finish
 
