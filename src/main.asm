@@ -62,7 +62,9 @@ CH_DATA_SIZE        equ 13
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
 CH_STAT_LANDED      equ %00000001
-CH_STAT_BLINK       Equ %00000010
+CH_STAT_BLINK       equ %00000010
+CH_STAT_KNOCK_BACK_L    equ %00000100
+CH_STAT_KNOCK_BACK_R    equ %00001000
 JUMP_SPEED          equ -4
 JUMP_ACCEL          equ $30
 JUMP_TIME           equ 20
@@ -83,6 +85,7 @@ STATUS_WIN_EXP_LABEL    equ (_SCRN1 + 44)
 STATUS_WIN_EXP_VALUE    equ (_SCRN1 + 46)
 BLINK_INTERVAL      equ 4
 BLINK_TIME          equ 60
+KNOCK_BACK_DIST     equ 8
 
 FONT_BLANK          equ (TILENUM_FONT + 0)
 FONT_NUM_0          equ (TILENUM_FONT + 1)
@@ -552,20 +555,31 @@ CopyByte:
 
 UpdatePlayer:
 
+    ; ノックバック処理を行う。
+    ld hl, player_data
+    call KncokBackCharacter
+
+    ; ノックバック処理をした場合は歩行処理を飛ばす。
+    and a
+    jr nz, .skipWalk
+
     ; 左方向への歩行処理を行う。
     ld b, BUTTON_LEFT
     ld c, -1
     ld d, -1
+    ld e, $0f
     call WalkPlayer
 
     ; 右方向への歩行処理を行う。
     ld b, BUTTON_RIGHT
     ld c, 1
     ld d, CHARACTER_SIZE
+    ld e, 0
     call WalkPlayer
 
+.skipWalk
+
     ; 床に接触しているか調べる。
-    ld hl, player_data
     ld d, CHARACTER_SIZE
     call CheckVertical
     ld b, a
@@ -868,6 +882,8 @@ CheckInput:
 ; @param b [in] チェックするボタン
 ; @param c [in] x方向の移動量
 ; @param d [in] 左なら-1、右ならキャラクターの幅を設定する。
+; @param e [in] 左なら$0f、右なら0を設定する。 
+; @param hl [in] キャラクターデータ
 WalkPlayer:
 
     ; bで指定されたキーが押されているかチェックする。
@@ -880,24 +896,15 @@ WalkPlayer:
     add a, c
     ld [player_data + CH_POS_X], a
 
-    ; ブロックに衝突したか調べる。
-    push bc
-    call CheckSideBlock
-    pop bc
-    ld d, a
-
     ; 移動量がプラスかマイナスかチェックする。
     ld a, c
-    cp a, $80
-    jr nc, .left
+    and a, $80
+    jr nz, .left
 
     ; 右向きにする。
     ld a, [player_data + CH_ATTR]
     and a, ~OAMF_XFLIP
     ld [player_data + CH_ATTR], a
-
-    ; ブロック衝突時の補正値を設定しておく。
-    ld e, 0
 
     jr .animation
 
@@ -908,15 +915,14 @@ WalkPlayer:
     or a, OAMF_XFLIP
     ld [player_data + CH_ATTR], a
 
-    ; ブロック衝突時の補正値を設定しておく。
-    ld e, $0f
-
 .animation
 
+    ; ブロックに衝突したか調べる。
+    call CorrectXPosToBlock
+
     ; ブロックに接触している場合はアニメーションせずに位置を補正する。
-    ld a, d
     and a
-    jr nz, .correctPosition
+    ret nz
 
     ; アニメーションを進める。
     ld a, [player_data + CH_ANIM_WAIT]
@@ -928,18 +934,6 @@ WalkPlayer:
     ld a, [player_data + CH_ANIMATION]
     xor a, TILE_NUM_16x16
     ld [player_data + CH_ANIMATION], a
-    ret
-
-.correctPosition
-
-    ; x座標をブロックの位置に補正する。
-    ld a, [player_data + CH_POS_X]
-    sub a, SPRITE_OFFSET_X
-    add a, e
-    and a, $f0
-    add a, SPRITE_OFFSET_X
-    ld [player_data + CH_POS_X], a
-
     ret
 
 ; プレイヤーキャラのジャンプする処理を行う。
@@ -1258,6 +1252,8 @@ CheckVertical:
 
 ; キャラクターが横のブロックに接触しているか調べる。
 ; @param a [out] 接触している場合1、そうでない場合は0
+; @param b [out] 作業用
+; @param c [out] 作業用
 ; @param d [in] 左なら-1、右ならキャラクターの幅を設定する。
 ; @param hl [in] キャラクターデータ
 CheckSideBlock:
@@ -1834,11 +1830,6 @@ CollisionEnemy:
     daa 
     ld [player_hp + 1], a
 
-    ; 無敵状態（点滅）にする。
-    ld a, [player_data + CH_STATUS]
-    or CH_STAT_BLINK
-    ld [player_data + CH_STATUS], a
-
     ; 点滅時間を設定する。
     ld a, BLINK_TIME
     ld [player_data + CH_BLINK_TIME], a
@@ -1847,9 +1838,164 @@ CollisionEnemy:
     ld a, BLINK_INTERVAL
     ld [player_data + CH_BLINK_WAIT], a
 
+    ; 敵の位置を取得する。
+    pop hl
+    push hl
+    ld a, [hl]
+    ld b, a
+
+    ; プレイヤーの位置を取得する。
+    ld a, [player_data + CH_POS_X]
+
+    ; プレイヤーが敵の左側にいるか、右側にいるか調べる。
+    cp a, b
+    jr c, .knockBackToLeft
+
+    ; 右側に移動する。
+    add a, KNOCK_BACK_DIST
+    ld b, CH_STAT_BLINK | CH_STAT_KNOCK_BACK_R
+    ld d, CHARACTER_SIZE
+    ld e, 0
+    jr .correctXPos
+
+.knockBackToLeft
+
+    ; 左側に移動する。
+    sub a, KNOCK_BACK_DIST
+    ld b, CH_STAT_BLINK | CH_STAT_KNOCK_BACK_L
+    ld d, -1
+    ld e, $0f
+
+.correctXPos
+
+    ; 移動後の座標を書き込む。
+    ld [player_data + CH_POS_X], a
+
+    ; ノックバック状態を設定する。
+    ld a, [player_data + CH_STATUS]
+    or b
+    ld [player_data + CH_STATUS], a
+
+    ; チェックするキャラクターのアドレスをプレイヤーに設定する。
+    ld hl, player_data
+
+    ; キャラクターが横のブロックに接触している場合、
+    ; ブロックの位置にキャラクター位置を補正する。
+    Call CorrectXPosToBlock
+
 .finish
 
     ; 敵の先頭アドレスをスタックから取り除く。
     pop hl
+
+    ret
+
+; キャラクターが横のブロックに接触している場合、
+; ブロックの位置にキャラクター位置を補正する。
+; @param a [out] 接触している場合1、そうでない場合は0
+; @param b [out] 作業用
+; @param c [out] 作業用
+; @param d [in] 左なら-1、右ならキャラクターの幅を設定する。
+; @param e [in] 左なら$0f、右なら0を設定する。 
+; @param hl [in] キャラクターデータ
+CorrectXPosToBlock:
+
+    ; ブロックに衝突したか調べる。
+    call CheckSideBlock
+    and a
+    ret z
+
+    ; x座標をブロックの位置に補正する。
+    ld a, [hl]
+    sub a, SPRITE_OFFSET_X
+    add a, e
+    and a, $f0
+    add a, SPRITE_OFFSET_X
+    ld [hl], a
+
+    ; ブロックと接触していたことをaに格納する。
+    ld a, 1
+
+    ret
+
+; キャラクターをノックバックする。
+; @param a [out] ノックバックしたとき1、フラグが立っていないとき0
+; @param hl [in] キャラクターデータ
+KncokBackCharacter:
+
+    ; 対象キャラクターとアドレスをスタックに保存する。
+    push hl
+
+    ; 状態を取得する。
+    pop hl
+    push hl
+    ld bc, CH_STATUS
+    add hl, bc
+    ld a, [hl]
+
+    ; 左にノックバックするかどうか調べる。
+    and a, CH_STAT_KNOCK_BACK_L
+    jr nz, .knockBackToLeft
+
+    ; 右にノックバックするかどうか調べる。
+    and a, CH_STAT_KNOCK_BACK_R
+    jr nz, .knockBackToRight
+
+    ; 対象キャラクターのアドレズをスタックから復元する。
+    pop hl
+
+    ; フラグが立っていなかったときはaに0を設定する。
+    xor a
+
+    ret
+
+.knockBackToRight
+
+    ; 右側に移動する。
+    pop hl
+    push hl
+    ld a, [hl]
+    add a, KNOCK_BACK_DIST
+    ld [hl], a
+
+    ; CorrectXPosToBlockのパラメータを設定する。
+    ld d, CHARACTER_SIZE
+    ld e, 0
+
+    jr .correctXPos
+
+.knockBackToLeft
+
+    ; 左側に移動する。
+    pop hl
+    push hl
+    ld a, [hl]
+    sub a, KNOCK_BACK_DIST
+    ld [hl], a
+
+    ; CorrectXPosToBlockのパラメータを設定する。
+    ld d, -1
+    ld e, $0f
+
+.correctXPos
+
+    ; キャラクターが横のブロックに接触している場合、
+    ; ブロックの位置にキャラクター位置を補正する。
+    Call CorrectXPosToBlock
+
+    ; ノックバックフラグを落とす。
+    pop hl
+    push hl
+    ld bc, CH_STATUS
+    add hl, bc
+    ld a, [hl]
+    and a, ~(CH_STAT_KNOCK_BACK_L | CH_STAT_KNOCK_BACK_R)
+    ld [hl], a
+
+    ; 対象キャラクターのアドレズをスタックから復元する。
+    pop hl
+
+    ; ノックバック処理をしたときはaに1を設定する。
+    ld a, 1
 
     ret
