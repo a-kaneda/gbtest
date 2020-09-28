@@ -1255,6 +1255,7 @@ CheckVertical:
 ; @param b [out] 作業用
 ; @param c [out] 作業用
 ; @param d [in] 左なら-1、右ならキャラクターの幅を設定する。
+; @param e [out] 作業用
 ; @param hl [in] キャラクターデータ
 CheckSideBlock:
 
@@ -1352,6 +1353,7 @@ CheckSideBlock:
 
 ; 指定した座標のマップ情報を取得する。
 ; @param a [out] マップ情報
+; @param e [out] 作業用
 ; @param hl [out] マップタイルのアドレス
 ; @param work1 [in] y座標マップインデックス
 ; @param work2 [in] x座標マップインデックス
@@ -1901,7 +1903,9 @@ CollisionEnemy:
 CorrectXPosToBlock:
 
     ; ブロックに衝突したか調べる。
+    push de
     call CheckSideBlock
+    pop de
     and a
     ret z
 
@@ -1934,10 +1938,12 @@ KncokBackCharacter:
     ld a, [hl]
 
     ; 左にノックバックするかどうか調べる。
+    ld b, a
     and a, CH_STAT_KNOCK_BACK_L
     jr nz, .knockBackToLeft
 
     ; 右にノックバックするかどうか調べる。
+    ld a, b
     and a, CH_STAT_KNOCK_BACK_R
     jr nz, .knockBackToRight
 
