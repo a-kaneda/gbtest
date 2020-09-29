@@ -86,6 +86,7 @@ STATUS_WIN_EXP_VALUE    equ (_SCRN1 + 46)
 BLINK_INTERVAL      equ 4
 BLINK_TIME          equ 60
 KNOCK_BACK_DIST     equ 8
+PLAYER_HIT_MARGIN   equ 4
 
 FONT_BLANK          equ (TILENUM_FONT + 0)
 FONT_NUM_0          equ (TILENUM_FONT + 1)
@@ -1774,7 +1775,7 @@ CollisionEnemy:
 
     ; プレイヤーの右端を計算する。
     ld a, [player_data + CH_POS_X]
-    add a, CHARACTER_SIZE
+    add a, CHARACTER_SIZE - PLAYER_HIT_MARGIN
 
     ; プレイヤーの右端 < 敵の左端の場合は処理を終了する。
     cp a, b
@@ -1783,6 +1784,7 @@ CollisionEnemy:
     ; プレイヤーの左端が敵の右端よりも左側か調べる。
     ; プレイヤーの左端を取得する。
     ld a, [player_data + CH_POS_X]
+    add a, PLAYER_HIT_MARGIN
     ld b, a
 
     ; 敵の右端を計算する。
@@ -1802,7 +1804,7 @@ CollisionEnemy:
 
     ; プレイヤーの下端を計算する。
     ld a, [player_data + CH_POS_Y]
-    add a, CHARACTER_SIZE
+    add a, CHARACTER_SIZE - PLAYER_HIT_MARGIN
 
     ; プレイヤーの右端 < 敵の左端の場合は処理を終了する。
     cp a, b
@@ -1811,6 +1813,7 @@ CollisionEnemy:
     ; プレイヤーの上端が敵の下端よりも上側か調べる。
     ; プレイヤーの上端を取得する。
     ld a, [player_data + CH_POS_Y]
+    add a, PLAYER_HIT_MARGIN
     ld b, a
 
     ; 敵の下端を計算する。
