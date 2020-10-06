@@ -21,7 +21,9 @@ TILELEN_BACK_001    equ 8
 TILENUM_FONT        equ (16 * 4)
 TILENUM_PLAYER_01   equ (TILENUM_FONT + ImageFontLen)
 TILELEN_PLAYER      equ 8
-TILENUM_MONSTER_01  equ (TILENUM_PLAYER_01 + TILELEN_PLAYER)
+TILENUM_EFFECT      equ (TILENUM_PLAYER_01 + TILELEN_PLAYER)
+TILELEN_EFFECT      equ 1
+TILENUM_MONSTER_01  equ (TILENUM_EFFECT + TILELEN_EFFECT)
 TILELEN_MONSTER_01  equ 8
 SPRNUM_PLAYER       equ 0
 SPRNUM_ENEMY        equ 4
@@ -58,7 +60,9 @@ CH_JUMP_TIME        equ 9
 CH_BLINK_TIME       equ 10
 CH_BLINK_WAIT       equ 11
 CH_STATUS           equ 12
-CH_DATA_SIZE        equ 13
+CH_WIDTH            equ 13
+CH_HEIGHT           equ 14
+CH_DATA_SIZE        equ 15
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
 CH_STAT_LANDED      equ %00000001
@@ -435,6 +439,11 @@ Main:
     ld hl, ImagePlayer
     ld de, _VRAM + TILENUM_PLAYER_01 * TILE_SIZE
     ld bc, TILELEN_PLAYER * TILE_SIZE
+    call CopyMemory
+
+    ld hl, ImageEffect
+    ld de, _VRAM + TILENUM_EFFECT * TILE_SIZE
+    ld bc, TILELEN_EFFECT * TILE_SIZE
     call CopyMemory
 
     ld hl, ImageMonster01
@@ -1435,6 +1444,22 @@ CreateMonster01:
     ld a, OAMF_XFLIP
     ld [hl], a
 
+    ; 幅を設定する。
+    pop hl
+    push hl
+    ld bc, CH_WIDTH
+    add hl, bc
+    ld a, 2
+    ld [hl], a
+
+    ; 高さを設定する。
+    pop hl
+    push hl
+    ld bc, CH_HEIGHT
+    add hl, bc
+    ld a, 2
+    ld [hl], a
+
     ; キャラクターデータのアドレスをスタックから復元する。
     pop hl
 
@@ -1451,51 +1476,21 @@ UpdateCharacter:
     ; キャラクターの移動処理を行う。
     call MoveMonster01
 
-    ; y座標を取得する。
+    ; 幅を取得する。
     pop hl
     push hl
-    ld bc, CH_POS_Y
+    ld bc, CH_WIDTH
     add hl, bc
     ld a, [hl]
+    ld [work1], a
 
-    ; 各タイルのy座標を設定する。
-    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_POS_Y
-    ld bc, SPRNUM_ENEMY * SPRITE_SIZE
-    ; 左上のタイルを設定する。
-    ld [hl], a
-    ; 左下のタイルを設定する。
-    add TILE_HEIGHT
-    add hl, bc
-    ld [hl], a
-    ; 右上のタイルを設定する。
-    sub TILE_HEIGHT
-    add hl, bc
-    ld [hl], a
-    ; 右下のタイルを設定する。
-    add TILE_HEIGHT
-    add hl, bc
-    ld [hl], a
-
-    ; x座標を取得する。
+    ; 高さを取得する。
     pop hl
     push hl
+    ld bc, CH_HEIGHT
+    add hl, bc
     ld a, [hl]
-
-    ; 各タイルのy座標を設定する。
-    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_POS_X
-    ld bc, SPRNUM_ENEMY * SPRITE_SIZE
-    ; 左上のタイルを設定する。
-    ld [hl], a
-    ; 左下のタイルを設定する。
-    add hl, bc
-    ld [hl], a
-    ; 右上のタイルを設定する。
-    add TILE_WIDTH
-    add hl, bc
-    ld [hl], a
-    ; 右下のタイルを設定する。
-    add hl, bc
-    ld [hl], a
+    ld [work2], a
 
     ; 属性を取得する。
     pop hl
@@ -1503,20 +1498,131 @@ UpdateCharacter:
     ld bc, CH_ATTR
     add hl, bc
     ld a, [hl]
-    ld [work1], a
+    ld [work4], a
+
+    ; y座標を取得する。
+    pop hl
+    push hl
+    ld bc, CH_POS_Y
+    add hl, bc
+    ld a, [hl]
+    ld [work3], a
+
+    ; 各タイルのy座標を設定する。
+    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_POS_Y
+    ld bc, SPRITE_SIZE
+
+    ; 幅をメモリから取得する。
+    ld a, [work1]
+    ld d, a
+
+.setYPosLoopX
+
+    ; 高さをメモリから取得する。
+    ld a, [work2]
+    ld e, a
+
+    ; y座標をメモリから取得する。
+    ld a, [work3]
+
+.setYPosLoopY
+
+    ; DMA用領域に設定する。
+    ld [hl], a
+    add hl, bc
+
+    ; 次の行に移動するのでy座標をずらす。
+    add TILE_HEIGHT
+
+    ; 高さ方向にループする。
+    dec e
+    jr nz, .setYPosLoopY
+
+    ; 高さ方向が終わったら、次の列に移動するのでy座標を戻す。
+    ld a, [work3]
+
+    ; 幅方向にループする。
+    dec d
+    jr nz, .setYPosLoopX
+
+    ; x座標を取得する。
+    pop hl
+    push hl
+    ld a, [hl]
+    ld [work3], a
 
     ; 左右反転しているか調べる。
+    ld a, [work4]
     and a, OAMF_XFLIP
     jr nz, .xflip
 
-    ld d, 0
-    jr .serTileNumber
+    ; 左右反転していなければタイルを左から右に向かってループする。
+    ld b, TILE_WIDTH
+    jr .noXflip
 
 .xflip
 
-    ld d, 2
+    ; 左右反転していればタイルを右から左に向かってループする。
+    ld b, -TILE_WIDTH
 
-.serTileNumber
+    ; 幅をメモリから取得する。
+    ld a, [work1]
+    ld d, a
+
+    ; x座標をメモリから取得する。
+    ld a, [work3]
+
+    ; x座標 += (幅 - 1) * タイルサイズ
+.setInitPosXLoop
+
+    dec d
+    jr z, .noXflip
+    add TILE_WIDTH
+    ld [work3], a
+    jr .setInitPosXLoop
+
+.noXflip
+
+    ; 各タイルのy座標を設定する。
+    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_POS_X
+
+    ; 幅をメモリから取得する。
+    ld a, [work1]
+    ld d, a
+
+.setXPosLoopX
+
+    ; 高さをメモリから取得する。
+    ld a, [work2]
+    ld e, a
+
+.setXPosLoopY
+
+    ; x座標をメモリから取得する。
+    ld a, [work3]
+
+    ; DMA用領域に設定する。
+    ld [hl], a
+
+    ld a, l
+    add SPRITE_SIZE
+    jr nc, .noIncHSetXPos
+    inc h 
+.noIncHSetXPos
+    ld l, a
+
+    ; 高さ方向にループする。
+    dec e
+    jr nz, .setXPosLoopY
+
+    ; 高さ方向が終わったら、次の列に移動するのでx座標をずらす。
+    ld a, [work3]
+    add b
+    ld [work3], a
+
+    ; 幅方向にループする。
+    dec d
+    jr nz, .setXPosLoopX
 
     ; タイル番号を取得する。
     pop hl
@@ -1524,65 +1630,82 @@ UpdateCharacter:
     ld bc, CH_TILE
     add hl, bc
     ld a, [hl]
-    ld e, a
+    ld [work3], a
     
     ; アニメーションを取得する。
     pop hl
     push hl
     ld bc, CH_ANIMATION
     add hl, bc
-    ld a, [hl]
-    add a, e
-    ld e, a
+    ld a, [work3]
+    add a, [hl]
+    ld [work3], a
 
     ; 各タイルのタイル番号を設定する。
     ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_NUM
-    ld bc, SPRNUM_ENEMY * SPRITE_SIZE
+    ld bc, SPRITE_SIZE
 
-    ; 左上のタイルを設定する。
-    ld a, d
-    add a, e
-    ld [hl], a
-
-    ; 左下のタイルを設定する。
-    inc d
-    ld a, d
-    add a, e
-    add hl, bc
-    ld [hl], a
-
-    ; 右上のタイルを設定する。
-    inc d
-    ld a, d
-    and a, $03
+    ; 幅をメモリから取得する。
+    ld a, [work1]
     ld d, a
-    add a, e
-    add hl, bc
-    ld [hl], a
 
-    ; 右下のタイルを設定する。
-    inc d
-    ld a, d
-    add a, e
-    add hl, bc
+.setTileNumLoopX
+
+    ; 高さをメモリから取得する。
+    ld a, [work2]
+    ld e, a
+
+    ; タイル番号ををメモリから取得する。
+    ld a, [work3]
+
+.setTileNumLoopY
+
+    ; DMA用領域に設定する。
     ld [hl], a
+    add hl, bc
+
+    ; タイル番号を進める。
+    inc a
+    ld [work3], a
+
+    ; 高さ方向にループする。
+    dec e
+    jr nz, .setTileNumLoopY
+
+    ; 幅方向にループする。
+    dec d
+    jr nz, .setTileNumLoopX
 
     ; 各タイルのattributeを設定する。
-    ld a, [work1]
     ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_ATTRIBUTE
-    ld bc, SPRNUM_ENEMY * SPRITE_SIZE
+    ld bc, SPRITE_SIZE
 
-    ; 左上のタイルを設定する。
+    ; 幅をメモリから取得する。
+    ld a, [work1]
+    ld d, a
+
+.setAttributeLoopX
+
+    ; 高さをメモリから取得する。
+    ld a, [work2]
+    ld e, a
+
+    ; attributeをメモリから取得する。
+    ld a, [work4]
+
+.setAttributeLoopY
+
+    ; DMA用領域に設定する。
     ld [hl], a
-    ; 左下のタイルを設定する。
     add hl, bc
-    ld [hl], a
-    ; 右上のタイルを設定する。
-    add hl, bc
-    ld [hl], a
-    ; 右下のタイルを設定する。
-    add hl, bc
-    ld [hl], a
+
+    ; 高さ方向にループする。
+    dec e
+    jr nz, .setAttributeLoopY
+
+    ; 幅方向にループする。
+    dec d
+    jr nz, .setAttributeLoopX
 
     ; キャラクターデータのアドレスをスタックから復元する。
     pop hl

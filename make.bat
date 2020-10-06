@@ -7,6 +7,7 @@ image_font.z80 ^
 image_player.z80 ^
 image_monster01.z80 ^
 image_back.z80 ^
+image_effect.z80 ^
 map001.z80
 
 SET APP_NAME=gbtest
