@@ -26,7 +26,8 @@ TILELEN_EFFECT      equ 1
 TILENUM_MONSTER_01  equ (TILENUM_EFFECT + TILELEN_EFFECT)
 TILELEN_MONSTER_01  equ 8
 SPRNUM_PLAYER       equ 0
-SPRNUM_ENEMY        equ 4
+SPRNUM_PLAYER_SHOT  equ 4
+SPRNUM_ENEMY        equ 7
 SPRITE_POS_Y        equ 0
 SPRITE_POS_X        equ 1
 SPRITE_NUM          equ 2
@@ -91,6 +92,10 @@ BLINK_INTERVAL      equ 4
 BLINK_TIME          equ 60
 KNOCK_BACK_DIST     equ 8
 PLAYER_HIT_MARGIN   equ 4
+PLAYER_SHOT_MAX     equ 3
+FIRE_SIZE_HALF      equ 4
+FIRE_SIZE           equ 8
+FIRE_MAX            equ 3
 
 FONT_BLANK          equ (TILENUM_FONT + 0)
 FONT_NUM_0          equ (TILENUM_FONT + 1)
@@ -268,8 +273,10 @@ work1               ds 1
 work2               ds 1
 work3               ds 1
 work4               ds 1
+work5               ds 1
 player_data         ds CH_DATA_SIZE
 player_hp           ds 2
+player_shot         ds CH_DATA_SIZE * PLAYER_SHOT_MAX
 enemy_data          ds CH_DATA_SIZE
 map_width           ds 1
 map_address_h       ds 1
@@ -490,7 +497,8 @@ Main:
     call CreateMonster01
 
     call UpdatePlayer
-    call UpdateCharacter
+    call UpdatePlayerShot
+    call UpdateEnemy
     call UpdateStatusWindow
     call OAM_DMA
 
@@ -512,7 +520,8 @@ MainLoop:
     call OAM_DMA
     call CheckInput
     call UpdatePlayer
-    call UpdateCharacter
+    call UpdatePlayerShot
+    call UpdateEnemy
     call UpdateStatusWindow
 
     jp MainLoop
@@ -600,6 +609,9 @@ UpdatePlayer:
     or a, b
     ld [player_data + CH_STATUS], a
 
+    ; 魔法を使用する。
+    call UseMagic
+
     ; ジャンプ処理を行う。
     call JumpPlayer
 
@@ -607,6 +619,7 @@ UpdatePlayer:
     call CancelJump
 
     ; 落下処理を行う。
+    ld hl, player_data
     call FallCharacter
 
     ; 敵との衝突判定を行う。
@@ -1466,15 +1479,15 @@ CreateMonster01:
     ret 
 
 ; キャラクターの状態を更新する。
+; @param hl [in]更新するキャラクター
 UpdateCharacter:
-
-    ld hl, enemy_data
 
     ; スタックにキャラクターデータのアドレスを保持しておく。
     push hl
 
-    ; キャラクターの移動処理を行う。
-    call MoveMonster01
+    ; スプライト番号をメモリに退避する。
+    ld a, b
+    ld [work5], a
 
     ; 幅を取得する。
     pop hl
@@ -1509,7 +1522,12 @@ UpdateCharacter:
     ld [work3], a
 
     ; 各タイルのy座標を設定する。
-    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_POS_Y
+    ld hl, sprites + SPRITE_POS_Y
+    ld a, [work5]
+    ld b, 0
+    ld c, a
+    add hl, bc
+
     ld bc, SPRITE_SIZE
 
     ; 幅をメモリから取得する。
@@ -1551,6 +1569,13 @@ UpdateCharacter:
     ld a, [hl]
     ld [work3], a
 
+    ; 各タイルのy座標を設定する。
+    ld hl, sprites + SPRITE_POS_X
+    ld a, [work5]
+    ld b, 0
+    ld c, a
+    add hl, bc
+
     ; 左右反転しているか調べる。
     ld a, [work4]
     and a, OAMF_XFLIP
@@ -1582,9 +1607,6 @@ UpdateCharacter:
     jr .setInitPosXLoop
 
 .noXflip
-
-    ; 各タイルのy座標を設定する。
-    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_POS_X
 
     ; 幅をメモリから取得する。
     ld a, [work1]
@@ -1642,7 +1664,12 @@ UpdateCharacter:
     ld [work3], a
 
     ; 各タイルのタイル番号を設定する。
-    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_NUM
+    ld hl, sprites + SPRITE_NUM
+    ld a, [work5]
+    ld b, 0
+    ld c, a
+    add hl, bc
+
     ld bc, SPRITE_SIZE
 
     ; 幅をメモリから取得する。
@@ -1677,7 +1704,12 @@ UpdateCharacter:
     jr nz, .setTileNumLoopX
 
     ; 各タイルのattributeを設定する。
-    ld hl, sprites + SPRNUM_ENEMY * SPRITE_SIZE + SPRITE_ATTRIBUTE
+    ld hl, sprites + SPRITE_ATTRIBUTE
+    ld a, [work5]
+    ld b, 0
+    ld c, a
+    add hl, bc
+
     ld bc, SPRITE_SIZE
 
     ; 幅をメモリから取得する。
@@ -2129,5 +2161,183 @@ KncokBackCharacter:
 
     ; ノックバック処理をしたときはaに1を設定する。
     ld a, 1
+
+    ret
+
+; ファイアの魔法を発生させる。
+; @param b [in] x座標
+; @param c [in] y座標
+; @param d [in] attribute
+CreateFire:
+
+    ; 空いているバッファを検索する。
+    ld e, FIRE_MAX
+    ld hl, player_shot
+
+.loopSearchBuffer
+
+    ; x座標が0ならば空いていると判断する。
+    ld a, [hl]
+    or a
+    jr z, .foundBuffer
+
+    ; 規定個数バッファを検索して空いているものがなければ終了する。
+    dec e
+    ret z
+
+    ; 次のバッファに進める。
+    ld a, l
+    add CH_DATA_SIZE
+    jr nc, .noIncH_1
+    inc h
+.noIncH_1
+    ld l, a
+
+    jr .loopSearchBuffer
+
+.foundBuffer
+
+    ; spを退避し、キャラクターのアドレスを設定する。
+    ld [work1], sp
+    ld sp, hl
+
+    ; X座標を設定する。
+    ld a, b
+    ld [hl], a
+
+    ; y座標を設定する。
+    ld hl, sp + CH_POS_Y
+    ld a, c
+    ld [hl], a
+
+    ; タイル番号を設定する。
+    ld hl, sp + CH_TILE
+    ld a, TILENUM_EFFECT
+    ld [hl], a
+
+    ; 属性を設定する。
+    ld hl, sp + CH_ATTR
+    ld a, d
+    ld [hl], a
+
+    ; 幅を設定する。
+    ld hl, sp + CH_WIDTH
+    ld a, 1
+    ld [hl], a
+
+    ; 高さを設定する。
+    ld hl, sp + CH_HEIGHT
+    ld a, 1
+    ld [hl], a
+
+    ; spを復元する。
+    ld a, [work1]
+    ld l, a
+    ld a, [work1 + 1]
+    ld h, a
+    ld sp, hl
+
+    ret
+
+; 魔法を使用する。
+UseMagic:
+
+    ; Bボタンが押されているかチェックする。
+    ld a, [pressedButton]
+    and BUTTON_B
+    ret z
+
+    ; y座標はキャラクターの中央に合うようにする。
+    ld a, [player_data + CH_POS_Y]
+    add FIRE_SIZE_HALF
+    ld c, a
+
+    ; キャラクターの向きをチェックする。
+    ld a, [player_data + CH_ATTR]
+    and OAMF_XFLIP
+    jr nz, .xflip
+    
+    ; 右向きの場合は右側に発生させる。
+    ld a, [player_data + CH_POS_X]
+    add a, CHARACTER_SIZE
+    ld b, a
+
+    ; 反転はなしとする。
+    ld d, 0
+
+    jr .createMagic
+
+.xflip
+
+    ; 左向きの場合は左側に発生させる。
+    ld a, [player_data + CH_POS_X]
+    sub a, FIRE_SIZE
+    ld b, a
+
+    ; 左右反転する。
+    ld d, OAMF_XFLIP
+
+.createMagic
+
+    ; ファイアを生成する。
+    call CreateFire
+
+    ret
+
+; 敵の状態を更新する。
+UpdateEnemy:
+
+    ; 敵データのアドレスを設定する。
+    ld hl, enemy_data
+
+    ; キャラクターの移動処理を行う。
+    call MoveMonster01
+
+    ; キャラクターの表示状態を更新する。
+    ld b, SPRNUM_ENEMY * SPRITE_SIZE
+    call UpdateCharacter
+
+    ret
+
+; プレイヤーの弾の状態を更新する。
+UpdatePlayerShot:
+
+    ; 弾の数だけループする。
+    ld c, PLAYER_SHOT_MAX
+
+    ; DMA用のアドレスを設定する。
+    ld b, SPRNUM_PLAYER_SHOT * SPRITE_SIZE
+
+    ; プレイヤーの弾のアドレスを設定する。
+    ld hl, player_shot
+
+.loop
+
+    ; x座標を取得する。
+    ld a, [hl]
+
+    ; x座標が0の場合、処理を飛ばす。
+    or a
+    jr z, .skip
+
+    ; キャラクターの表示状態を更新する。
+    push bc
+    call UpdateCharacter
+    pop bc
+
+.skip
+
+    ; 次の弾に進める。
+    ld de, CH_DATA_SIZE
+    add hl, de
+
+    ; DMA用のアドレスを計算する。
+    ld a, b
+    add SPRITE_SIZE
+    ld b, a
+
+    ; 弾の数だけループする。
+    dec c
+    jr nz, .loop
 
     ret
