@@ -96,6 +96,7 @@ PLAYER_SHOT_MAX     equ 3
 FIRE_SIZE_HALF      equ 4
 FIRE_SIZE           equ 8
 FIRE_MAX            equ 3
+FIRE_SPEED          equ 4
 
 FONT_BLANK          equ (TILENUM_FONT + 0)
 FONT_NUM_0          equ (TILENUM_FONT + 1)
@@ -274,10 +275,7 @@ work2               ds 1
 work3               ds 1
 work4               ds 1
 work5               ds 1
-player_data         ds CH_DATA_SIZE
 player_hp           ds 2
-player_shot         ds CH_DATA_SIZE * PLAYER_SHOT_MAX
-enemy_data          ds CH_DATA_SIZE
 map_width           ds 1
 map_address_h       ds 1
 map_address_l       ds 1
@@ -286,6 +284,9 @@ VARIABLES_END:
 SECTION "Temporary", HRAM
 
 OAM_DMA             ds 10
+player_data         ds CH_DATA_SIZE
+enemy_data          ds CH_DATA_SIZE
+player_shot         ds CH_DATA_SIZE * PLAYER_SHOT_MAX
 
 ; ================================================================
 ; Reset vectors (actual ROM starts here)
@@ -416,6 +417,14 @@ Main:
     ld [rSCX], a
     ld [rSCY], a
 
+    xor a
+    ld bc, $7f80
+.clearHRAM
+    ld [c], a
+    inc c
+    dec b
+    jr nz, .clearHRAM
+
     ld hl, OAM_DMA_
     ld bc, (10 * $100) + (OAM_DMA % $100)
 .copyOAM_DMA
@@ -481,13 +490,13 @@ Main:
 
     ; プレイヤーキャラの初期状態を設定する。
     ld a, 16 + SPRITE_OFFSET_X
-    ld [player_data + CH_POS_X], a
+    ldh [(player_data & $ff) + CH_POS_X], a
     ld a, 16 + SPRITE_OFFSET_Y
-    ld [player_data + CH_POS_Y], a
+    ldh [(player_data & $ff) + CH_POS_Y], a
     ld a, TILENUM_PLAYER_01
-    ld [player_data + CH_TILE], a
+    ldh [(player_data & $ff) + CH_TILE], a
     ld a, OAMF_PAL1
-    ld [player_data + CH_ATTR], a
+    ldh [(player_data & $ff) + CH_ATTR], a
     ld a, $99
     ld [player_hp], a
     ld a, $09
@@ -575,7 +584,7 @@ CopyByte:
 UpdatePlayer:
 
     ; ノックバック処理を行う。
-    ld hl, player_data
+    ld b, player_data & $ff
     call KncokBackCharacter
 
     ; ノックバック処理をした場合は歩行処理を飛ばす。
@@ -599,15 +608,16 @@ UpdatePlayer:
 .skipWalk
 
     ; 床に接触しているか調べる。
+    ld b, player_data & $ff
     ld d, CHARACTER_SIZE
     call CheckVertical
     ld b, a
 
     ; プレイヤーキャラの状態に着地状態を保存する。
-    ld a, [player_data + CH_STATUS]
+    ldh a, [(player_data & $ff) + CH_STATUS]
     and a, ~CH_STAT_LANDED
     or a, b
-    ld [player_data + CH_STATUS], a
+    ldh [(player_data & $ff) + CH_STATUS], a
 
     ; 魔法を使用する。
     call UseMagic
@@ -619,49 +629,49 @@ UpdatePlayer:
     call CancelJump
 
     ; 落下処理を行う。
-    ld hl, player_data
+    ld b, (player_data & $ff)
     call FallCharacter
 
     ; 敵との衝突判定を行う。
     call CollisionEnemy
 
     ; プレイヤーの状態を取得する。
-    ld a, [player_data + CH_STATUS]
+    ldh a, [(player_data & $ff) + CH_STATUS]
 
     ; ジャンプ中の場合は0番目固定とする。
     and a, CH_STAT_LANDED
     jr nz, .checkBlinkTime
     xor a
-    ld [player_data + CH_ANIMATION], a
-    ld [player_data + CH_ANIM_WAIT], a
+    ldh [(player_data & $ff) + CH_ANIMATION], a
+    ldh [(player_data & $ff) + CH_ANIM_WAIT], a
 
 .checkBlinkTime
 
     ; 点滅時間を取得する。
-    ld a, [player_data + CH_BLINK_TIME]
+    ldh a, [(player_data & $ff) + CH_BLINK_TIME]
     and a
     jr z, .setTilePos
 
     ; 点滅時間をカウントする。
     dec a
-    ld [player_data + CH_BLINK_TIME], a
+    ldh [(player_data & $ff) + CH_BLINK_TIME], a
 
     ; 点滅切替時間をカウントする。
-    ld a, [player_data + CH_BLINK_WAIT]
+    ldh a, [(player_data & $ff) + CH_BLINK_WAIT]
     dec a
-    ld [player_data + CH_BLINK_WAIT], a
+    ldh [(player_data & $ff) + CH_BLINK_WAIT], a
 
     ; キャラクター状態を取得する。
-    ld a, [player_data + CH_STATUS]
+    ldh a, [(player_data & $ff) + CH_STATUS]
 
     ; 点滅切替時間が経過している場合は透明かどうかを切り替える。
     jr nz, .checkBlinkStatus
     xor a, CH_STAT_BLINK
-    ld [player_data + CH_STATUS], a
+    ldh [(player_data & $ff) + CH_STATUS], a
 
     ; 点滅切替時間を再設定する。
     ld a, BLINK_INTERVAL
-    ld [player_data + CH_BLINK_WAIT], a
+    ldh [(player_data & $ff) + CH_BLINK_WAIT], a
 
 .checkBlinkStatus
 
@@ -680,7 +690,7 @@ UpdatePlayer:
 .setTilePos
 
     ; 各タイルのy座標を設定する。
-    ld a, [player_data + CH_POS_Y]
+    ldh a, [(player_data & $ff) + CH_POS_Y]
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_Y], a
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_Y], a
     add TILE_HEIGHT
@@ -688,10 +698,10 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_Y], a
 
     ; 各タイルのx座標を設定する。
-    ld a, [player_data + CH_ATTR]
+    ldh a, [(player_data & $ff) + CH_ATTR]
     and a, OAMF_XFLIP
     jr nz, .xflip
-    ld a, [player_data + CH_POS_X]
+    ldh a, [(player_data & $ff) + CH_POS_X]
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_POS_X], a
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_POS_X], a
     add TILE_WIDTH
@@ -699,7 +709,7 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
     jr .setTileNumber
 .xflip
-    ld a, [player_data + CH_POS_X]
+    ldh a, [(player_data & $ff) + CH_POS_X]
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_POS_X], a
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_POS_X], a
     add TILE_WIDTH
@@ -709,9 +719,9 @@ UpdatePlayer:
 .setTileNumber
 
     ; 各タイルのタイル番号を設定する。
-    ld a, [player_data + CH_TILE]
+    ldh a, [(player_data & $ff) + CH_TILE]
     ld b, a
-    ld a, [player_data + CH_ANIMATION]
+    ldh a, [(player_data & $ff) + CH_ANIMATION]
     add a, b
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_NUM], a
     inc a
@@ -722,7 +732,7 @@ UpdatePlayer:
     ld [sprites + (SPRNUM_PLAYER + 3) * SPRITE_SIZE + SPRITE_NUM], a
 
     ; 各タイルのattributeを設定する。
-    ld a, [player_data + CH_ATTR]
+    ldh a, [(player_data & $ff) + CH_ATTR]
     ld [sprites + SPRNUM_PLAYER * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
     ld [sprites + (SPRNUM_PLAYER + 1) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
     ld [sprites + (SPRNUM_PLAYER + 2) * SPRITE_SIZE + SPRITE_ATTRIBUTE], a
@@ -906,7 +916,6 @@ CheckInput:
 ; @param c [in] x方向の移動量
 ; @param d [in] 左なら-1、右ならキャラクターの幅を設定する。
 ; @param e [in] 左なら$0f、右なら0を設定する。 
-; @param hl [in] キャラクターデータ
 WalkPlayer:
 
     ; bで指定されたキーが押されているかチェックする。
@@ -915,9 +924,9 @@ WalkPlayer:
     ret z
 
     ; cで指定された移動量分移動する。
-    ld a, [player_data + CH_POS_X]
+    ldh a, [(player_data & $ff) + CH_POS_X]
     add a, c
-    ld [player_data + CH_POS_X], a
+    ldh [(player_data & $ff) + CH_POS_X], a
 
     ; 移動量がプラスかマイナスかチェックする。
     ld a, c
@@ -925,22 +934,23 @@ WalkPlayer:
     jr nz, .left
 
     ; 右向きにする。
-    ld a, [player_data + CH_ATTR]
+    ldh a, [(player_data & $ff) + CH_ATTR]
     and a, ~OAMF_XFLIP
-    ld [player_data + CH_ATTR], a
+    ldh [(player_data & $ff) + CH_ATTR], a
 
     jr .animation
 
 .left
 
     ; 左向きにする。
-    ld a, [player_data + CH_ATTR]
+    ldh a, [(player_data & $ff) + CH_ATTR]
     or a, OAMF_XFLIP
-    ld [player_data + CH_ATTR], a
+    ldh [(player_data & $ff) + CH_ATTR], a
 
 .animation
 
     ; ブロックに衝突したか調べる。
+    ld b, (player_data & $ff)
     call CorrectXPosToBlock
 
     ; ブロックに接触している場合はアニメーションせずに位置を補正する。
@@ -948,22 +958,22 @@ WalkPlayer:
     ret nz
 
     ; アニメーションを進める。
-    ld a, [player_data + CH_ANIM_WAIT]
+    ldh a, [(player_data & $ff) + CH_ANIM_WAIT]
     add a, PLAYER_ANIM_SPEED
-    ld [player_data + CH_ANIM_WAIT], a
+    ldh [(player_data & $ff) + CH_ANIM_WAIT], a
     ret nc
 
     ; アニメーション待機フレームが終わっている場合はスプライトを変える。
-    ld a, [player_data + CH_ANIMATION]
+    ldh a, [(player_data & $ff) + CH_ANIMATION]
     xor a, TILE_NUM_16x16
-    ld [player_data + CH_ANIMATION], a
+    ldh [(player_data & $ff) + CH_ANIMATION], a
     ret
 
 ; プレイヤーキャラのジャンプする処理を行う。
 JumpPlayer:
 
     ; 着地していない場合は処理を終了する。
-    ld a, [player_data + CH_STATUS]
+    ldh a, [(player_data & $ff) + CH_STATUS]
     and a, CH_STAT_LANDED
     ret z
 
@@ -974,11 +984,11 @@ JumpPlayer:
 
     ; ジャンプスピードを設定する。
     ld a, JUMP_SPEED
-    ld [player_data + CH_SPEED_Y], a
+    ldh [(player_data & $ff) + CH_SPEED_Y], a
 
     ; ジャンプ時間を設定する。
     ld a, JUMP_TIME
-    ld [player_data + CH_JUMP_TIME], a
+    ldh [(player_data & $ff) + CH_JUMP_TIME], a
     
     ret
 
@@ -987,7 +997,7 @@ JumpPlayer:
 CancelJump:
 
     ; ジャンプ時間が設定されていない場合は処理を終了する。
-    ld a, [player_data + CH_JUMP_TIME]
+    ldh a, [(player_data & $ff) + CH_JUMP_TIME]
     and a
     ret z
 
@@ -998,21 +1008,23 @@ CancelJump:
 
     ; ジャンプ時間を0にする。
     xor a
-    ld [player_data + CH_JUMP_TIME], a
+    ldh [(player_data & $ff) + CH_JUMP_TIME], a
 
     ret
 
 ; キャラクターの落下処理を行う。
-; @param hl [in] キャラクターデータ
+; @param a [out] 作業用
+; @param b [in] キャラクターデータ
+; @param c [out] 作業用
+; @param d [out] 作業用
+; @param e [out] 作業用
 FallCharacter:
 
-    ; スタックにキャラクターデータのアドレスを保持しておく。
-    push hl
-
     ; ジャンプ時間を取得する。
-    ld bc, CH_JUMP_TIME
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_JUMP_TIME
+    ld c, a
+    ld a, [c]
 
     ; ジャンプ時間が設定されていなければ落下処理を行う。
     and a
@@ -1020,7 +1032,7 @@ FallCharacter:
 
     ; ジャンプ時間を減らす。
     dec a
-    ld [hl], a
+    ld [c], a
 
     ld d, JUMP_ACCEL
     ld e, 0
@@ -1029,15 +1041,14 @@ FallCharacter:
 .fall
 
     ; 状態のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_STATUS
-    add hl, bc
+    ld a, b
+    add CH_STATUS
+    ld c, a
 
     ; 地面に接触している場合は処理を終了する。
-    ld a, [hl]
+    ld a, [c]
     and a, CH_STAT_LANDED
-    jr nz, .finish
+    ret nz
 
     ; 地面に接触していない場合は落下加速度を設定する。
     ld d, FALL_ACCEL
@@ -1046,25 +1057,23 @@ FallCharacter:
 .setYAccel
 
     ; 加速度のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_ACCEL_Y
-    add hl, bc
+    ld a, b
+    add CH_ACCEL_Y
+    ld c, a
 
     ; 加速度を加算する。
-    ld a, [hl]
+    ld a, [c]
     add a, d
-    ld [hl], a
+    ld [c], a
 
     ; 加速度が256に満たない場合は速度は増加させない。
     jr nc, .getYSpeed
 
     ; 速度を取得する。
-    pop hl
-    push hl
-    ld bc, CH_SPEED_Y
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_SPEED_Y
+    ld c, a
+    ld a, [c]
 
     ; 速度が上限に達している場合は速度を変更しない。
     cp a, e
@@ -1072,19 +1081,16 @@ FallCharacter:
 
     ; 速度を加算する。
     inc a
-    ld [hl], a
+    ld [c], a
     jr .setYPosition
 
 .getYSpeed
 
-    ; 速度のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_SPEED_Y
-    add hl, bc
-
     ; 速度を取得する。
-    ld a, [hl]
+    ld a, b
+    add CH_SPEED_Y
+    ld c, a
+    ld a, [c]
 
 .setYPosition
 
@@ -1092,19 +1098,19 @@ FallCharacter:
     ld d, a
 
     ; 位置のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_POS_Y
-    add hl, bc
+    ld a, b
+    add CH_POS_Y
+    ld c, a
 
     ; 位置を加算する。
-    add a, [hl]
-    ld [hl], a
+    ld a, [c]
+    add a, d
+    ld [c], a
 
     ; 速度が0の場合は処理を終了する。
     ld a, d
     and a
-    jr z, .finish
+    ret z
 
     ; 速度が正か負か調べる。
     cp a, $80
@@ -1123,76 +1129,64 @@ FallCharacter:
 
 .checkHitBlock
 
-    pop hl
-    push hl
+    ; 縦方向のブロックとの接触をチェックする。
     call CheckVertical
 
     ; 接触していなければ、処理を終了する。
     and a, CH_STAT_LANDED
-    jr z, .finish
+    ret z
 
     ; 位置のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_POS_Y
-    add hl, bc
+    ld a, b
+    add CH_POS_Y
+    ld c, a
 
     ; 位置をブロックの位置に補正する。
-    ld a, [hl]
+    ld a, [c]
     add a, e
     and a, $f0
-    ld [hl], a
+    ld [c], a
 
     ; 速度のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_SPEED_Y
-    add hl, bc
+    ld a, b
+    add CH_SPEED_Y
+    ld c, a
 
     ; 速度を0にする。
     xor a
-    ld [hl], a
+    ld [c], a
 
     ; 加速度のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_ACCEL_Y
-    add hl, bc
+    ld a, b
+    add CH_ACCEL_Y
+    ld c, a
 
     ; 加速度を0にする。
-    ld [hl], a
+    ld [c], a
 
     ; ジャンプ時間のアドレスを計算する。
-    pop hl
-    push hl
-    ld bc, CH_JUMP_TIME
-    add hl, bc
+    ld a, b
+    add CH_JUMP_TIME
+    ld c, a
 
     ; ジャンプ時間を0にする。
-    ld [hl], a
-
-.finish
-
-    ; キャラクターデータのアドレスをスタックから復元する。
-    pop hl
+    ld [c], a
 
     ret
 
 ; キャラクターが地面に接触しているか調べる。
 ; @param a [out] 接触している場合1、そうでない場合は0
+; @param b [in] キャラクターデータ
+; @param c [out] 作業用
 ; @param d [in] 上なら-1、下ならキャラクターの高さを設定する。
-; @param hl [in] キャラクターデータ
+; @param e [out] 作業用
 CheckVertical:
 
-    ; スタックにキャラクターデータのアドレスを保持しておく。
-    push hl
-
     ; y座標を取得する。
-    pop hl
-    push hl
-    ld bc, CH_POS_Y
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_POS_Y
+    ld c, a
+    ld a, [c]
 
     ; スプライト座標のオフセット分を減算する。
     sub a, SPRITE_OFFSET_Y
@@ -1211,18 +1205,19 @@ CheckVertical:
     ld [work1], a
 
     ; x座標を取得する。
-    pop hl
-    push hl
-    ld a, [hl]
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
 
     ; スプライト座標のオフセット分を減算する。
     sub a, SPRITE_OFFSET_X
 
     ; x座標が16の倍数でない場合は一つ右側のマップタイルも調べる。
-    ld b, a
+    ld e, a
     and a, $0f
     ld [work3], a
-    ld a, b
+    ld a, e
 
     ; 16で割って、座標からマップインデックスに換算する。
     srl a
@@ -1234,7 +1229,9 @@ CheckVertical:
     ld [work2], a
 
     ; 足元のマップタイル情報を取得する。
+    push bc
     call GetMapInfo
+    pop bc
 
     ; 足元がブロックかどうか調べる。
     cp a, MAP_BLOCK
@@ -1255,18 +1252,12 @@ CheckVertical:
 
 .setLanded
 
-    ; キャラクターデータのアドレスをスタックから復元する。
-    pop hl
-
     ; 足元にブロックがある場合はaを1として終了する。
     ld a, CH_STAT_LANDED
 
     ret
 
 .finish
-
-    ; キャラクターデータのアドレスをスタックから復元する。
-    pop hl
 
     ; 足元にブロックがない場合はaを0として終了する。
     xor a
@@ -1275,31 +1266,26 @@ CheckVertical:
 
 ; キャラクターが横のブロックに接触しているか調べる。
 ; @param a [out] 接触している場合1、そうでない場合は0
-; @param b [out] 作業用
+; @param b [in] キャラクターデータ
 ; @param c [out] 作業用
 ; @param d [in] 左なら-1、右ならキャラクターの幅を設定する。
 ; @param e [out] 作業用
-; @param hl [in] キャラクターデータ
 CheckSideBlock:
 
-    ; スタックにキャラクターデータのアドレスを保持しておく。
-    push hl
-
     ; y座標を取得する。
-    pop hl
-    push hl
-    ld bc, CH_POS_Y
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_POS_Y
+    ld c, a
+    ld a, [c]
 
     ; スプライト座標のオフセット分を減算する。
     sub a, SPRITE_OFFSET_Y
 
     ; y座標が16の倍数でない場合は一つ下のマップタイルも調べる。
-    ld b, a
+    ld c, a
     and a, $0f
     ld [work3], a
-    ld a, b
+    ld a, c
 
     ; 16で割って、座標からマップインデックスに換算する。
     srl a
@@ -1311,9 +1297,10 @@ CheckSideBlock:
     ld [work1], a
 
     ; x座標を取得する。
-    pop hl
-    push hl
-    ld a, [hl]
+    ld a, b
+    add a, CH_POS_X
+    ld c, a
+    ld a, [c]
 
     ; スプライト座標のオフセット分を減算する。
     sub a, SPRITE_OFFSET_X
@@ -1332,7 +1319,9 @@ CheckSideBlock:
     ld [work2], a
 
     ; 横のマップタイル情報を取得する。
+    push bc
     call GetMapInfo
+    pop bc
 
     ; 横がブロックかどうか調べる。
     cp a, MAP_BLOCK
@@ -1343,10 +1332,12 @@ CheckSideBlock:
     and a
     jr z, .finish
 
-    ld b, 0
     ld a, [map_width]
-    ld c, a
-    add hl, bc
+    add l
+    ld l, a
+    jr nc, .noInc
+    inc h
+.noInc
     ld a, [hl]
     and a, MAP_ATTRIBUTE
 
@@ -1356,18 +1347,12 @@ CheckSideBlock:
 
 .hitFloor
 
-    ; キャラクターデータのアドレスをスタックから復元する。
-    pop hl
-
     ; 横にブロックがある場合はaを1として終了する。
     ld a, 1
 
     ret
 
 .finish
-
-    ; キャラクターデータのアドレスをスタックから復元する。
-    pop hl
 
     ; 横にブロックがない場合はaを0として終了する。
     xor a
@@ -1376,6 +1361,9 @@ CheckSideBlock:
 
 ; 指定した座標のマップ情報を取得する。
 ; @param a [out] マップ情報
+; @param B [out] 作業用
+; @param C [out] 作業用
+; @param D [out] 作業用
 ; @param e [out] 作業用
 ; @param hl [out] マップタイルのアドレス
 ; @param work1 [in] y座標マップインデックス
@@ -1420,108 +1408,98 @@ GetMapInfo:
 ; モンスター01(スライム)を作成する。
 CreateMonster01:
 
-    ld hl, enemy_data
+    ld b, (enemy_data & $ff)
     ld d, 144
     ld e, 96
 
-    ; スタックにキャラクターデータのアドレスを保持しておく。
-    push hl
-
     ; X座標を設定する。
+    ld a, b
+    add a, CH_POS_X
+    ld c, a
     ld a, d
     add a, SPRITE_OFFSET_X
-    ld [hl], a
+    ld [c], a
 
     ; y座標を設定する。
-    pop hl
-    push hl
-    ld bc, CH_POS_Y
-    add hl, bc
+    ld a, b
+    add a, CH_POS_Y
+    ld c, a
     ld a, e
     add a, SPRITE_OFFSET_Y
-    ld [hl], a
+    ld [c], a
 
     ; タイル番号を設定する。
-    pop hl
-    push hl
-    ld bc, CH_TILE
-    add hl, bc
+    ld a, b
+    add a, CH_TILE
+    ld c, a
     ld a, TILENUM_MONSTER_01
-    ld [hl], a
+    ld [c], a
 
     ; 属性を設定する。
-    pop hl
-    push hl
-    ld bc, CH_ATTR
-    add hl, bc
+    ld a, b
+    add a, CH_ATTR
+    ld c, a
     ld a, OAMF_XFLIP
-    ld [hl], a
+    ld [c], a
 
     ; 幅を設定する。
-    pop hl
-    push hl
-    ld bc, CH_WIDTH
-    add hl, bc
+    ld a, b
+    add a, CH_WIDTH
+    ld c, a
     ld a, 2
-    ld [hl], a
+    ld [c], a
 
     ; 高さを設定する。
-    pop hl
-    push hl
-    ld bc, CH_HEIGHT
-    add hl, bc
+    ld a, b
+    add a, CH_HEIGHT
+    ld c, a
     ld a, 2
-    ld [hl], a
-
-    ; キャラクターデータのアドレスをスタックから復元する。
-    pop hl
+    ld [c], a
 
     ret 
 
 ; キャラクターの状態を更新する。
-; @param hl [in]更新するキャラクター
+; @param b [in] 更新するキャラクター
+; @param c [out] 作業用
+; @param d [in] スプライト番号
+; @param h [out] 作業用
+; @param l [out] 作業用
 UpdateCharacter:
 
-    ; スタックにキャラクターデータのアドレスを保持しておく。
-    push hl
-
     ; スプライト番号をメモリに退避する。
-    ld a, b
+    ld a, d
     ld [work5], a
 
     ; 幅を取得する。
-    pop hl
-    push hl
-    ld bc, CH_WIDTH
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_WIDTH
+    ld c, a
+    ld a, [c]
     ld [work1], a
 
     ; 高さを取得する。
-    pop hl
-    push hl
-    ld bc, CH_HEIGHT
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_HEIGHT
+    ld c, a
+    ld a, [c]
     ld [work2], a
 
     ; 属性を取得する。
-    pop hl
-    push hl
-    ld bc, CH_ATTR
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_ATTR
+    ld c, a
+    ld a, [c]
     ld [work4], a
 
     ; y座標を取得する。
-    pop hl
-    push hl
-    ld bc, CH_POS_Y
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_POS_Y
+    ld c, a
+    ld a, [c]
     ld [work3], a
 
     ; 各タイルのy座標を設定する。
+    push bc
     ld hl, sprites + SPRITE_POS_Y
     ld a, [work5]
     ld b, 0
@@ -1564,12 +1542,15 @@ UpdateCharacter:
     jr nz, .setYPosLoopX
 
     ; x座標を取得する。
-    pop hl
-    push hl
-    ld a, [hl]
+    pop bc
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
     ld [work3], a
 
     ; 各タイルのy座標を設定する。
+    push bc
     ld hl, sprites + SPRITE_POS_X
     ld a, [work5]
     ld b, 0
@@ -1647,23 +1628,26 @@ UpdateCharacter:
     jr nz, .setXPosLoopX
 
     ; タイル番号を取得する。
-    pop hl
-    push hl
-    ld bc, CH_TILE
-    add hl, bc
-    ld a, [hl]
+    pop bc
+    ld a, b
+    add CH_TILE
+    ld c, a
+    ld a, [c]
     ld [work3], a
     
     ; アニメーションを取得する。
-    pop hl
-    push hl
-    ld bc, CH_ANIMATION
-    add hl, bc
+    ld a, b
+    add CH_ANIMATION
+    ld c, a
+    ld a, [c]
     ld a, [work3]
-    add a, [hl]
+    ld d, a
+    ld a, [c]
+    add d
     ld [work3], a
 
     ; 各タイルのタイル番号を設定する。
+    push bc
     ld hl, sprites + SPRITE_NUM
     ld a, [work5]
     ld b, 0
@@ -1740,53 +1724,47 @@ UpdateCharacter:
     jr nz, .setAttributeLoopX
 
     ; キャラクターデータのアドレスをスタックから復元する。
-    pop hl
+    pop bc
     
     ret
 
 ; モンスター01(スライム)を移動する。
+; @param a [out] 作業用
+; @param b [in] キャラクターデータ
+; @param c [out] 作業用
 MoveMonster01:
 
-    ; スタックにキャラクターデータのアドレスを保持しておく。
-    push hl
-
     ; x座標小数部を取得する。
-    pop hl
-    push hl
-    ld bc, CH_POS_X_DEC
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_POS_X_DEC
+    ld c, a
+    ld a, [c]
 
     ; 左へ移動する。
     sub a, $20
-    ld [hl], a
+    ld [c], a
 
-    jr nc, .finish
+    ret nc
 
     ; x座標を取得する。
-    pop hl
-    push hl
-    ld a, [hl]
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
 
     ; 左へ移動する。
     dec a
     
     ; x座標を設定する。
-    ld [hl], a
+    ld [c], a
 
     ; アニメーションを進める。
-    pop hl
-    push hl
-    ld bc, CH_ANIMATION
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_ANIMATION
+    ld c, a
+    ld a, [c]
     xor a, TILE_NUM_16x16
-    ld [hl], a
-       
-.finish
-
-    ; キャラクターデータのアドレスをスタックから復元する。
-    pop hl
+    ld [c], a
 
     ret
 
@@ -1915,69 +1893,78 @@ UpdateStatusWindow:
 CollisionEnemy:
 
     ; 点滅中の場合は当たり判定は行わない。
-    ld a, [player_data + CH_BLINK_TIME]
+    ldh a, [(player_data & $ff) + CH_BLINK_TIME]
     and a
     ret nz
 
-    ; 敵の先頭アドレスをスタックに記憶しておく。
-    ld hl, enemy_data
-    push hl
+    ; 敵の先頭アドレスを設定する。
+    ld h, enemy_data & $ff
 
     ; プレイヤーの右端が敵の左端よりも右側か調べる。
     ; 敵の左端を取得する。
-    ld a, [hl]
+    ld a, h
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
     ld b, a
 
     ; プレイヤーの右端を計算する。
-    ld a, [player_data + CH_POS_X]
+    ldh a, [(player_data & $ff) + CH_POS_X]
     add a, CHARACTER_SIZE - PLAYER_HIT_MARGIN
 
     ; プレイヤーの右端 < 敵の左端の場合は処理を終了する。
     cp a, b
-    jr c, .finish
+    ret c
 
     ; プレイヤーの左端が敵の右端よりも左側か調べる。
     ; プレイヤーの左端を取得する。
-    ld a, [player_data + CH_POS_X]
+    ldh a, [(player_data & $ff) + CH_POS_X]
     add a, PLAYER_HIT_MARGIN
     ld b, a
 
     ; 敵の右端を計算する。
-    ld a, [hl]
+    ld a, h
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
     add a, CHARACTER_SIZE
 
     ; 敵の右端 < プレイヤーの左端の場合は処理を終了する。
     cp a, b
-    jr c, .finish
+    ret c
 
     ; プレイヤーの下端が敵の上端よりも下側か調べる。
     ; 敵の上端を取得する。
-    ld bc, CH_POS_Y
-    add hl, bc
-    ld a, [hl]
+    ld a, h
+    add CH_POS_Y
+    ld c, a
+    ld a, [c]
     ld b, a
 
     ; プレイヤーの下端を計算する。
-    ld a, [player_data + CH_POS_Y]
+    ldh a, [(player_data & $ff) + CH_POS_Y]
     add a, CHARACTER_SIZE - PLAYER_HIT_MARGIN
 
     ; プレイヤーの右端 < 敵の左端の場合は処理を終了する。
     cp a, b
-    jr c, .finish
+    ret c
 
     ; プレイヤーの上端が敵の下端よりも上側か調べる。
     ; プレイヤーの上端を取得する。
-    ld a, [player_data + CH_POS_Y]
+    ldh a, [(player_data & $ff) + CH_POS_Y]
     add a, PLAYER_HIT_MARGIN
     ld b, a
 
     ; 敵の下端を計算する。
-    ld a, [hl]
+    ld a, h
+    add CH_POS_Y
+    ld c, a
+    ld a, [c]
     add a, CHARACTER_SIZE
 
     ; 敵の下端 < プレイヤーの上端の場合は処理を終了する。
     cp a, b
-    jr c, .finish
+    ret c
 
     ; 敵との衝突処理を行う。
     ; HPを減らす。
@@ -1992,20 +1979,21 @@ CollisionEnemy:
 
     ; 点滅時間を設定する。
     ld a, BLINK_TIME
-    ld [player_data + CH_BLINK_TIME], a
+    ldh [(player_data & $ff) + CH_BLINK_TIME], a
 
     ; 点滅間隔を設定する。
     ld a, BLINK_INTERVAL
-    ld [player_data + CH_BLINK_WAIT], a
+    ldh [(player_data & $ff) + CH_BLINK_WAIT], a
 
     ; 敵の位置を取得する。
-    pop hl
-    push hl
-    ld a, [hl]
+    ld a, h
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
     ld b, a
 
     ; プレイヤーの位置を取得する。
-    ld a, [player_data + CH_POS_X]
+    ldh a, [(player_data & $ff) + CH_POS_X]
 
     ; プレイヤーが敵の左側にいるか、右側にいるか調べる。
     cp a, b
@@ -2029,35 +2017,29 @@ CollisionEnemy:
 .correctXPos
 
     ; 移動後の座標を書き込む。
-    ld [player_data + CH_POS_X], a
+    ldh [(player_data & $ff) + CH_POS_X], a
 
     ; ノックバック状態を設定する。
-    ld a, [player_data + CH_STATUS]
+    ldh a, [(player_data & $ff) + CH_STATUS]
     or b
-    ld [player_data + CH_STATUS], a
+    ldh [(player_data & $ff) + CH_STATUS], a
 
     ; チェックするキャラクターのアドレスをプレイヤーに設定する。
-    ld hl, player_data
+    ld b, (player_data & $ff)
 
     ; キャラクターが横のブロックに接触している場合、
     ; ブロックの位置にキャラクター位置を補正する。
     Call CorrectXPosToBlock
-
-.finish
-
-    ; 敵の先頭アドレスをスタックから取り除く。
-    pop hl
 
     ret
 
 ; キャラクターが横のブロックに接触している場合、
 ; ブロックの位置にキャラクター位置を補正する。
 ; @param a [out] 接触している場合1、そうでない場合は0
-; @param b [out] 作業用
+; @param b [in] キャラクターデータ
 ; @param c [out] 作業用
 ; @param d [in] 左なら-1、右ならキャラクターの幅を設定する。
 ; @param e [in] 左なら$0f、右なら0を設定する。 
-; @param hl [in] キャラクターデータ
 CorrectXPosToBlock:
 
     ; ブロックに衝突したか調べる。
@@ -2068,12 +2050,15 @@ CorrectXPosToBlock:
     ret z
 
     ; x座標をブロックの位置に補正する。
-    ld a, [hl]
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
     sub a, SPRITE_OFFSET_X
     add a, e
     and a, $f0
     add a, SPRITE_OFFSET_X
-    ld [hl], a
+    ld [c], a
 
     ; ブロックと接触していたことをaに格納する。
     ld a, 1
@@ -2082,31 +2067,27 @@ CorrectXPosToBlock:
 
 ; キャラクターをノックバックする。
 ; @param a [out] ノックバックしたとき1、フラグが立っていないとき0
-; @param hl [in] キャラクターデータ
+; @param b [in] キャラクターデータ
+; @param c [out] 作業用
+; @param d [out] 作業用
+; @param e [out] 作業用
 KncokBackCharacter:
 
-    ; 対象キャラクターとアドレスをスタックに保存する。
-    push hl
-
     ; 状態を取得する。
-    pop hl
-    push hl
-    ld bc, CH_STATUS
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_STATUS
+    ld c, a
+    ld a, [c]
 
     ; 左にノックバックするかどうか調べる。
-    ld b, a
+    ld c, a
     and a, CH_STAT_KNOCK_BACK_L
     jr nz, .knockBackToLeft
 
     ; 右にノックバックするかどうか調べる。
-    ld a, b
+    ld a, c
     and a, CH_STAT_KNOCK_BACK_R
     jr nz, .knockBackToRight
-
-    ; 対象キャラクターのアドレズをスタックから復元する。
-    pop hl
 
     ; フラグが立っていなかったときはaに0を設定する。
     xor a
@@ -2116,11 +2097,12 @@ KncokBackCharacter:
 .knockBackToRight
 
     ; 右側に移動する。
-    pop hl
-    push hl
-    ld a, [hl]
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
     add a, KNOCK_BACK_DIST
-    ld [hl], a
+    ld [c], a
 
     ; CorrectXPosToBlockのパラメータを設定する。
     ld d, CHARACTER_SIZE
@@ -2131,11 +2113,12 @@ KncokBackCharacter:
 .knockBackToLeft
 
     ; 左側に移動する。
-    pop hl
-    push hl
-    ld a, [hl]
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
     sub a, KNOCK_BACK_DIST
-    ld [hl], a
+    ld [c], a
 
     ; CorrectXPosToBlockのパラメータを設定する。
     ld d, -1
@@ -2148,16 +2131,12 @@ KncokBackCharacter:
     Call CorrectXPosToBlock
 
     ; ノックバックフラグを落とす。
-    pop hl
-    push hl
-    ld bc, CH_STATUS
-    add hl, bc
-    ld a, [hl]
+    ld a, b
+    add CH_STATUS
+    ld c, a
+    ld a, [c]
     and a, ~(CH_STAT_KNOCK_BACK_L | CH_STAT_KNOCK_BACK_R)
-    ld [hl], a
-
-    ; 対象キャラクターのアドレズをスタックから復元する。
-    pop hl
+    ld [c], a
 
     ; ノックバック処理をしたときはaに1を設定する。
     ld a, 1
@@ -2165,19 +2144,26 @@ KncokBackCharacter:
     ret
 
 ; ファイアの魔法を発生させる。
-; @param b [in] x座標
-; @param c [in] y座標
+; @param a [out] 作業用
+; @param b [out] 作業用
+; @param c [out] 作業用
 ; @param d [in] attribute
+; @param e [out] 作業用
+; @param h [in] x座標
+; @param l [in] y座標
 CreateFire:
 
     ; 空いているバッファを検索する。
     ld e, FIRE_MAX
-    ld hl, player_shot
+    ld b, player_shot & $ff
 
 .loopSearchBuffer
 
     ; x座標が0ならば空いていると判断する。
-    ld a, [hl]
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
     or a
     jr z, .foundBuffer
 
@@ -2186,60 +2172,65 @@ CreateFire:
     ret z
 
     ; 次のバッファに進める。
-    ld a, l
+    ld a, b
     add CH_DATA_SIZE
-    jr nc, .noIncH_1
-    inc h
-.noIncH_1
-    ld l, a
+    ld b, a
 
     jr .loopSearchBuffer
 
 .foundBuffer
 
-    ; spを退避し、キャラクターのアドレスを設定する。
-    ld [work1], sp
-    ld sp, hl
-
     ; X座標を設定する。
     ld a, b
-    ld [hl], a
+    add CH_POS_X
+    ld c, a
+    ld a, h
+    ld [c], a
 
     ; y座標を設定する。
-    ld hl, sp + CH_POS_Y
-    ld a, c
-    ld [hl], a
+    ld a, b
+    add CH_POS_Y
+    ld c, a
+    ld a, l
+    ld [c], a
 
     ; タイル番号を設定する。
-    ld hl, sp + CH_TILE
+    ld a, b
+    add CH_TILE
+    ld c, a
     ld a, TILENUM_EFFECT
-    ld [hl], a
+    ld [c], a
 
     ; 属性を設定する。
-    ld hl, sp + CH_ATTR
+    ld a, b
+    add CH_ATTR
+    ld c, a
     ld a, d
-    ld [hl], a
+    ld [c], a
 
     ; 幅を設定する。
-    ld hl, sp + CH_WIDTH
+    ld a, b
+    add CH_WIDTH
+    ld c, a
     ld a, 1
-    ld [hl], a
+    ld [c], a
 
     ; 高さを設定する。
-    ld hl, sp + CH_HEIGHT
+    ld a, b
+    add CH_HEIGHT
+    ld c, a
     ld a, 1
-    ld [hl], a
-
-    ; spを復元する。
-    ld a, [work1]
-    ld l, a
-    ld a, [work1 + 1]
-    ld h, a
-    ld sp, hl
+    ld [c], a
 
     ret
 
 ; 魔法を使用する。
+; @param a [out] 作業用
+; @param b [out] 作業用
+; @param c [out] 作業用
+; @param d [out] 作業用
+; @param h [out] 作業用
+; @param l [out] 作業用
 UseMagic:
 
     ; Bボタンが押されているかチェックする。
@@ -2248,19 +2239,19 @@ UseMagic:
     ret z
 
     ; y座標はキャラクターの中央に合うようにする。
-    ld a, [player_data + CH_POS_Y]
+    ldh a, [(player_data & $ff)+ CH_POS_Y]
     add FIRE_SIZE_HALF
-    ld c, a
+    ld l, a
 
     ; キャラクターの向きをチェックする。
-    ld a, [player_data + CH_ATTR]
+    ldh a, [(player_data & $ff) + CH_ATTR]
     and OAMF_XFLIP
     jr nz, .xflip
     
     ; 右向きの場合は右側に発生させる。
-    ld a, [player_data + CH_POS_X]
+    ldh a, [(player_data & $ff) + CH_POS_X]
     add a, CHARACTER_SIZE
-    ld b, a
+    ld h, a
 
     ; 反転はなしとする。
     ld d, 0
@@ -2270,9 +2261,9 @@ UseMagic:
 .xflip
 
     ; 左向きの場合は左側に発生させる。
-    ld a, [player_data + CH_POS_X]
+    ldh a, [(player_data & $ff) + CH_POS_X]
     sub a, FIRE_SIZE
-    ld b, a
+    ld h, a
 
     ; 左右反転する。
     ld d, OAMF_XFLIP
@@ -2288,56 +2279,65 @@ UseMagic:
 UpdateEnemy:
 
     ; 敵データのアドレスを設定する。
-    ld hl, enemy_data
+    ld b, enemy_data & $ff
 
     ; キャラクターの移動処理を行う。
     call MoveMonster01
 
     ; キャラクターの表示状態を更新する。
-    ld b, SPRNUM_ENEMY * SPRITE_SIZE
+    ld d, SPRNUM_ENEMY * SPRITE_SIZE
     call UpdateCharacter
 
     ret
 
 ; プレイヤーの弾の状態を更新する。
+; @param a [out] 作業用
+; @param b [out] 作業用
+; @param c [out] 作業用
+; @param d [out] 作業用
+; @param e [out] 作業用
 UpdatePlayerShot:
 
     ; 弾の数だけループする。
-    ld c, PLAYER_SHOT_MAX
+    ld e, PLAYER_SHOT_MAX
 
     ; DMA用のアドレスを設定する。
-    ld b, SPRNUM_PLAYER_SHOT * SPRITE_SIZE
+    ld d, SPRNUM_PLAYER_SHOT * SPRITE_SIZE
 
     ; プレイヤーの弾のアドレスを設定する。
-    ld hl, player_shot
+    ld b, player_shot & $ff
 
 .loop
 
     ; x座標を取得する。
-    ld a, [hl]
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
 
     ; x座標が0の場合、処理を飛ばす。
     or a
     jr z, .skip
 
     ; キャラクターの表示状態を更新する。
-    push bc
+    push de
     call UpdateCharacter
-    pop bc
+    pop de
 
 .skip
 
     ; 次の弾に進める。
-    ld de, CH_DATA_SIZE
-    add hl, de
-
-    ; DMA用のアドレスを計算する。
     ld a, b
-    add SPRITE_SIZE
+    add CH_DATA_SIZE
     ld b, a
 
+    ; DMA用のアドレスを計算する。
+    ld a, d
+    add SPRITE_SIZE
+    ld d, a
+
     ; 弾の数だけループする。
-    dec c
+    dec e
     jr nz, .loop
 
     ret
