@@ -48,28 +48,29 @@ MAP_BLOCK           equ %01000000
 FALL_ACCEL          equ $80
 MAX_FALL_SPEED      equ 4
 CHARACTER_SIZE      equ 16
-CH_POS_X            equ 0
-CH_POS_Y            equ 1
-CH_TILE             equ 2
-CH_ATTR             equ 3
-CH_POS_X_DEC        equ 4
-CH_SPEED_Y          equ 5
-CH_ACCEL_Y          equ 6
-CH_ANIMATION        equ 7
-CH_ANIM_WAIT        equ 8
-CH_JUMP_TIME        equ 9
-CH_BLINK_TIME       equ 10
-CH_BLINK_WAIT       equ 11
-CH_STATUS           equ 12
+CH_STATUS           equ 0
+CH_POS_X            equ 1
+CH_POS_Y            equ 2
+CH_TILE             equ 3
+CH_ATTR             equ 4
+CH_POS_X_DEC        equ 5
+CH_SPEED_Y          equ 6
+CH_ACCEL_Y          equ 7
+CH_ANIMATION        equ 8
+CH_ANIM_WAIT        equ 9
+CH_JUMP_TIME        equ 10
+CH_BLINK_TIME       equ 11
+CH_BLINK_WAIT       equ 12
 CH_WIDTH            equ 13
 CH_HEIGHT           equ 14
 CH_DATA_SIZE        equ 15
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
-CH_STAT_LANDED      equ %00000001
-CH_STAT_BLINK       equ %00000010
-CH_STAT_KNOCK_BACK_L    equ %00000100
-CH_STAT_KNOCK_BACK_R    equ %00001000
+CH_STAT_ENABLE          equ %00000001
+CH_STAT_LANDED          equ %00000010
+CH_STAT_BLINK           equ %00000100
+CH_STAT_KNOCK_BACK_L    equ %00001000
+CH_STAT_KNOCK_BACK_R    equ %00010000
 JUMP_SPEED          equ -4
 JUMP_ACCEL          equ $30
 JUMP_TIME           equ 20
@@ -96,7 +97,7 @@ PLAYER_SHOT_MAX     equ 3
 FIRE_SIZE_HALF      equ 4
 FIRE_SIZE           equ 8
 FIRE_MAX            equ 3
-FIRE_SPEED          equ 4
+FIRE_SPEED          equ 2
 
 FONT_BLANK          equ (TILENUM_FONT + 0)
 FONT_NUM_0          equ (TILENUM_FONT + 1)
@@ -489,6 +490,8 @@ Main:
     call CreateStatusWindow
 
     ; プレイヤーキャラの初期状態を設定する。
+    ld a, CH_STAT_ENABLE
+    ldh [(player_data & $ff) + CH_STATUS], a
     ld a, 16 + SPRITE_OFFSET_X
     ldh [(player_data & $ff) + CH_POS_X], a
     ld a, 16 + SPRITE_OFFSET_Y
@@ -1412,6 +1415,13 @@ CreateMonster01:
     ld d, 144
     ld e, 96
 
+    ; 有効フラグを立てる。
+    ld a, b
+    add a, CH_STATUS
+    ld c, a
+    ld a, CH_STAT_ENABLE
+    ld [c], a
+
     ; X座標を設定する。
     ld a, b
     add a, CH_POS_X
@@ -2159,12 +2169,12 @@ CreateFire:
 
 .loopSearchBuffer
 
-    ; x座標が0ならば空いていると判断する。
+    ; 有効フラグが落ちている場合は空いているバッファと判断する。
     ld a, b
-    add CH_POS_X
+    add CH_STATUS
     ld c, a
     ld a, [c]
-    or a
+    and CH_STAT_ENABLE
     jr z, .foundBuffer
 
     ; 規定個数バッファを検索して空いているものがなければ終了する。
@@ -2179,6 +2189,13 @@ CreateFire:
     jr .loopSearchBuffer
 
 .foundBuffer
+
+    ; 有効フラグを立てる。
+    ld a, b
+    add a, CH_STATUS
+    ld c, a
+    ld a, CH_STAT_ENABLE
+    ld [c], a
 
     ; X座標を設定する。
     ld a, b
@@ -2250,7 +2267,7 @@ UseMagic:
     
     ; 右向きの場合は右側に発生させる。
     ldh a, [(player_data & $ff) + CH_POS_X]
-    add a, CHARACTER_SIZE
+    add a, (CHARACTER_SIZE >> 1)
     ld h, a
 
     ; 反転はなしとする。
@@ -2263,6 +2280,7 @@ UseMagic:
     ; 左向きの場合は左側に発生させる。
     ldh a, [(player_data & $ff) + CH_POS_X]
     sub a, FIRE_SIZE
+    add a, (CHARACTER_SIZE >> 1)
     ld h, a
 
     ; 左右反転する。
@@ -2309,15 +2327,18 @@ UpdatePlayerShot:
 
 .loop
 
-    ; x座標を取得する。
+    ; ステータスを取得する。
     ld a, b
-    add CH_POS_X
+    add CH_STATUS
     ld c, a
     ld a, [c]
 
-    ; x座標が0の場合、処理を飛ばす。
-    or a
+    ; 有効フラグが立っていない場合、処理を飛ばす。
+    and CH_STAT_ENABLE
     jr z, .skip
+
+    ; 移動処理を行う。
+    call MoveFire
 
     ; キャラクターの表示状態を更新する。
     push de
@@ -2339,5 +2360,62 @@ UpdatePlayerShot:
     ; 弾の数だけループする。
     dec e
     jr nz, .loop
+
+    ret
+
+; ファイアの魔法を移動させる。
+; @param a [out] 作業用
+; @param b [in] キャラクターデータ
+; @param c [out] 作業用
+; @param h [out] 作業用
+MoveFire:
+
+    ; 向きを調べる。
+    ld a, b
+    add CH_ATTR
+    ld c, a
+    ld a, [c]
+    and OAMF_XFLIP
+    jr nz, .moveToLeft
+
+    ; 右向きの場合は右に移動する。
+    ld h, FIRE_SPEED
+    jr .changeXPos
+
+.moveToLeft
+
+    ; 左向きの場合は左に移動する。
+    ld h, -FIRE_SPEED
+
+.changeXPos
+
+    ; x座標を更新する。
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
+    add a, h
+    ld [c], a
+
+    ; 画面外に出ているかチェックする。
+    cp SCRN_X + SPRITE_OFFSET_X
+    jr c, .noDelete
+
+    ; 画面外に出ている場合は弾を削除する。
+    ; 有効フラグを落とす。
+    ld a, b
+    add CH_STATUS
+    ld c, a
+    xor a
+    ld [c], a
+
+    ; x座標を0にして描画されないようにする。
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    xor a
+    ld [c], a
+
+.noDelete
 
     ret
