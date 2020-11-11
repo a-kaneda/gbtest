@@ -63,7 +63,11 @@ CH_BLINK_TIME       equ 11
 CH_BLINK_WAIT       equ 12
 CH_WIDTH            equ 13
 CH_HEIGHT           equ 14
-CH_DATA_SIZE        equ 15
+CH_HIT_LEFT   equ 15
+CH_HIT_TOP   equ 16
+CH_HIT_BOTTOM   equ 17
+CH_HIT_RIGHT   equ 18
+CH_DATA_SIZE        equ 19
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
 CH_STAT_ENABLE          equ %00000001
@@ -500,6 +504,12 @@ Main:
     ldh [(player_data & $ff) + CH_TILE], a
     ld a, OAMF_PAL1
     ldh [(player_data & $ff) + CH_ATTR], a
+    ld a, PLAYER_HIT_MARGIN
+    ldh [(player_data & $ff) + CH_HIT_LEFT], a
+    ldh [(player_data & $ff) + CH_HIT_TOP], a
+    ld a, CHARACTER_SIZE - PLAYER_HIT_MARGIN
+    ldh [(player_data & $ff) + CH_HIT_BOTTOM], a
+    ldh [(player_data & $ff) + CH_HIT_RIGHT], a
     ld a, $99
     ld [player_hp], a
     ld a, $09
@@ -1466,6 +1476,34 @@ CreateMonster01:
     ld a, 2
     ld [c], a
 
+    ; 当たり判定左端位置を設定する。
+    ld a, b
+    add a, CH_HIT_LEFT
+    ld c, a
+    xor a
+    ld [c], a
+
+    ; 当たり判定上端位置を設定する。
+    ld a, b
+    add a, CH_HIT_TOP
+    ld c, a
+    xor a
+    ld [c], a
+
+    ; 当たり判定右端位置を設定する。
+    ld a, b
+    add a, CH_HIT_RIGHT
+    ld c, a
+    ld a, CHARACTER_SIZE
+    ld [c], a
+
+    ; 当たり判定下端位置を設定する。
+    ld a, b
+    add a, CH_HIT_BOTTOM
+    ld c, a
+    ld a, CHARACTER_SIZE
+    ld [c], a
+
     ret 
 
 ; キャラクターの状態を更新する。
@@ -1900,6 +1938,12 @@ UpdateStatusWindow:
     ret 
 
 ; プレイヤーと敵との衝突処理を行う。
+; @param a [out] 作業用
+; @param b [out] 作業用
+; @param c [out] 作業用
+; @param d [out] 作業用
+; @param e [out] 作業用
+; @param h [out] 作業用
 CollisionEnemy:
 
     ; 点滅中の場合は当たり判定は行わない。
@@ -1907,73 +1951,16 @@ CollisionEnemy:
     and a
     ret nz
 
+    ; プレイヤーのアドレスを設定する。
+    ld b, player_data & $ff
+
     ; 敵の先頭アドレスを設定する。
-    ld h, enemy_data & $ff
+    ld d, enemy_data & $ff
 
-    ; プレイヤーの右端が敵の左端よりも右側か調べる。
-    ; 敵の左端を取得する。
-    ld a, h
-    add CH_POS_X
-    ld c, a
-    ld a, [c]
-    ld b, a
+    ; プレイヤーと敵の当たり判定を行う。
+    call CheckHitCharacter
 
-    ; プレイヤーの右端を計算する。
-    ldh a, [(player_data & $ff) + CH_POS_X]
-    add a, CHARACTER_SIZE - PLAYER_HIT_MARGIN
-
-    ; プレイヤーの右端 < 敵の左端の場合は処理を終了する。
-    cp a, b
-    ret c
-
-    ; プレイヤーの左端が敵の右端よりも左側か調べる。
-    ; プレイヤーの左端を取得する。
-    ldh a, [(player_data & $ff) + CH_POS_X]
-    add a, PLAYER_HIT_MARGIN
-    ld b, a
-
-    ; 敵の右端を計算する。
-    ld a, h
-    add CH_POS_X
-    ld c, a
-    ld a, [c]
-    add a, CHARACTER_SIZE
-
-    ; 敵の右端 < プレイヤーの左端の場合は処理を終了する。
-    cp a, b
-    ret c
-
-    ; プレイヤーの下端が敵の上端よりも下側か調べる。
-    ; 敵の上端を取得する。
-    ld a, h
-    add CH_POS_Y
-    ld c, a
-    ld a, [c]
-    ld b, a
-
-    ; プレイヤーの下端を計算する。
-    ldh a, [(player_data & $ff) + CH_POS_Y]
-    add a, CHARACTER_SIZE - PLAYER_HIT_MARGIN
-
-    ; プレイヤーの右端 < 敵の左端の場合は処理を終了する。
-    cp a, b
-    ret c
-
-    ; プレイヤーの上端が敵の下端よりも上側か調べる。
-    ; プレイヤーの上端を取得する。
-    ldh a, [(player_data & $ff) + CH_POS_Y]
-    add a, PLAYER_HIT_MARGIN
-    ld b, a
-
-    ; 敵の下端を計算する。
-    ld a, h
-    add CH_POS_Y
-    ld c, a
-    ld a, [c]
-    add a, CHARACTER_SIZE
-
-    ; 敵の下端 < プレイヤーの上端の場合は処理を終了する。
-    cp a, b
+    ; 接触していなければ処理を終了する。
     ret c
 
     ; 敵との衝突処理を行う。
@@ -1996,7 +1983,7 @@ CollisionEnemy:
     ldh [(player_data & $ff) + CH_BLINK_WAIT], a
 
     ; 敵の位置を取得する。
-    ld a, h
+    ld a, d
     add CH_POS_X
     ld c, a
     ld a, [c]
@@ -2239,6 +2226,34 @@ CreateFire:
     ld a, 1
     ld [c], a
 
+    ; 当たり判定左橋位置を設定する。
+    ld a, b
+    add a, CH_HIT_LEFT
+    ld c, a
+    xor a
+    ld [c], a
+
+    ; 当たり判定上端位置を設定する。
+    ld a, b
+    add a, CH_HIT_TOP
+    ld c, a
+    xor a
+    ld [c], a
+
+    ; 当たり判定右端位置を設定する。
+    ld a, b
+    add a, CH_HIT_RIGHT
+    ld c, a
+    ld a, TILE_SIZE
+    ld [c], a
+
+    ; 当たり判定下端位置を設定する。
+    ld a, b
+    add a, CH_HIT_BOTTOM
+    ld c, a
+    ld a, TILE_SIZE
+    ld [c], a
+
     ret
 
 ; 魔法を使用する。
@@ -2418,4 +2433,150 @@ MoveFire:
 
 .noDelete
 
+    ret
+
+; キャラクター同士の当たり判定を行う。
+; @param a [out] 作業用
+; @param b [in] キャラクターデータ1
+; @param c [out] 作業用
+; @param d [in] キャラクターデータ2
+; @param e [out] 作業用
+; @param h [out] 作業用
+; @param f [out] nc: 接触している, c: 接触していない
+CheckHitCharacter:
+
+    ; キャラクター1の右端がキャラクター2の左端よりも右側か調べる。
+    ; キャラクター2のx座標を取得する。
+    ld a, d
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
+    ld e, a
+
+    ; キャラクター2の当たり判定左端位置を加算する。
+    ld a, d
+    add CH_HIT_LEFT
+    ld c, a
+    ld a, [c]
+    add e
+    ld h, a
+
+    ; キャラクター1のx座標を取得する。
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
+    ld e, a
+
+    ; キャラクター1の当たり判定右端位置を加算する。
+    ld a, b
+    add CH_HIT_RIGHT
+    ld c, a
+    ld a, [c]
+    add e
+
+    ; キャラクター1の右端 < キャラクター2の左端の場合は処理を終了する。
+    cp a, h
+    ret c
+
+    ; キャラクター1の左端がキャラクター2の右端よりも左側か調べる。
+    ; キャラクター1のx座標を取得する。
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
+    ld e, a
+
+    ; キャラクター1の当たり判定左端位置を加算する。
+    ld a, b
+    add CH_HIT_LEFT
+    ld c, a
+    ld a, [c]
+    add e
+    ld h, a
+
+    ; キャラクター2のx座標を取得する。
+    ld a, d
+    add CH_POS_X
+    ld c, a
+    ld a, [c]
+    ld e, a
+
+    ; キャラクター2の当たり判定右端位置を加算する。
+    ld a, d
+    add CH_HIT_RIGHT
+    ld c, a
+    ld a, [c]
+    add e
+
+    ; キャラクター2の右端 < キャラクター1の左端の場合は処理を終了する。
+    cp a, h
+    ret c
+
+    ; キャラクター1の下端がキャラクター2の上端よりも下側か調べる。
+    ; キャラクター2のy座標を取得する。
+    ld a, d
+    add CH_POS_Y
+    ld c, a
+    ld a, [c]
+    ld e, a
+
+    ; キャラクター2の当たり判定上端位置を加算する。
+    ld a, d
+    add CH_HIT_TOP
+    ld c, a
+    ld a, [c]
+    add e
+    ld h, a
+
+    ; キャラクター1のy座標を取得する。
+    ld a, b
+    add CH_POS_Y
+    ld c, a
+    ld a, [c]
+    ld e, a
+
+    ; キャラクター1の当たり判定下端位置を加算する。
+    ld a, b
+    add CH_HIT_BOTTOM
+    ld c, a
+    ld a, [c]
+    add e
+
+    ; キャラクター1の右端 < キャラクター2の左端の場合は処理を終了する。
+    cp a, h
+    ret c
+
+    ; キャラクター1の上端がキャラクター2の下端よりも上側か調べる。
+    ; キャラクター1のy座標を取得する。
+    ld a, b
+    add CH_POS_Y
+    ld c, a
+    ld a, [c]
+    ld e, a
+
+    ; キャラクター1の当たり判定上端位置を加算する。
+    ld a, b
+    add CH_HIT_TOP
+    ld c, a
+    ld a, [c]
+    add e
+    ld h, a
+
+    ; キャラクター2のy座標を取得する。
+    ld a, d
+    add CH_POS_Y
+    ld c, a
+    ld a, [c]
+    ld e, a
+
+    ; キャラクター2の当たり判定下端位置を加算する。
+    ld a, d
+    add CH_HIT_BOTTOM
+    ld c, a
+    ld a, [c]
+    add e
+
+    ; 敵の下端 < プレイヤーの上端のチェック結果をフラグレジスタへ反映させる。
+    cp a, h
     ret
