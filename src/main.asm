@@ -49,25 +49,26 @@ FALL_ACCEL          equ $80
 MAX_FALL_SPEED      equ 4
 CHARACTER_SIZE      equ 16
 CH_STATUS           equ 0
-CH_POS_X            equ 1
-CH_POS_Y            equ 2
-CH_TILE             equ 3
-CH_ATTR             equ 4
-CH_POS_X_DEC        equ 5
-CH_SPEED_Y          equ 6
-CH_ACCEL_Y          equ 7
-CH_ANIMATION        equ 8
-CH_ANIM_WAIT        equ 9
-CH_JUMP_TIME        equ 10
-CH_BLINK_TIME       equ 11
-CH_BLINK_WAIT       equ 12
-CH_WIDTH            equ 13
-CH_HEIGHT           equ 14
-CH_HIT_LEFT   equ 15
-CH_HIT_TOP   equ 16
-CH_HIT_BOTTOM   equ 17
-CH_HIT_RIGHT   equ 18
-CH_DATA_SIZE        equ 19
+CH_WRAMDATA         equ 1
+CH_POS_X            equ 3
+CH_POS_Y            equ 4
+CH_TILE             equ 5
+CH_ATTR             equ 6
+CH_POS_X_DEC        equ 7
+CH_SPEED_Y          equ 8
+CH_ACCEL_Y          equ 9
+CH_ANIMATION        equ 10
+CH_ANIM_WAIT        equ 11
+CH_JUMP_TIME        equ 12
+CH_BLINK_TIME       equ 13
+CH_BLINK_WAIT       equ 14
+CH_WIDTH            equ 15
+CH_HEIGHT           equ 16
+CH_HIT_LEFT         equ 17
+CH_HIT_TOP          equ 18
+CH_HIT_BOTTOM       equ 19
+CH_HIT_RIGHT        equ 20
+CH_DATA_SIZE        equ 21
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
 CH_STAT_ENABLE          equ %00000001
@@ -102,6 +103,8 @@ FIRE_SIZE_HALF      equ 4
 FIRE_SIZE           equ 8
 FIRE_MAX            equ 3
 FIRE_SPEED          equ 2
+EN_HP               equ 0
+EN_DATA_SIZE        equ 1
 
 FONT_BLANK          equ (TILENUM_FONT + 0)
 FONT_NUM_0          equ (TILENUM_FONT + 1)
@@ -284,6 +287,7 @@ player_hp           ds 2
 map_width           ds 1
 map_address_h       ds 1
 map_address_l       ds 1
+enemy_data2         ds EN_DATA_SIZE
 VARIABLES_END:
 
 SECTION "Temporary", HRAM
@@ -1480,28 +1484,28 @@ CreateMonster01:
     ld a, b
     add a, CH_HIT_LEFT
     ld c, a
-    xor a
+    ld a, 2
     ld [c], a
 
     ; 当たり判定上端位置を設定する。
     ld a, b
     add a, CH_HIT_TOP
     ld c, a
-    xor a
+    ld a, 2
     ld [c], a
 
     ; 当たり判定右端位置を設定する。
     ld a, b
     add a, CH_HIT_RIGHT
     ld c, a
-    ld a, CHARACTER_SIZE
+    ld a, 14
     ld [c], a
 
     ; 当たり判定下端位置を設定する。
     ld a, b
     add a, CH_HIT_BOTTOM
     ld c, a
-    ld a, CHARACTER_SIZE
+    ld a, 14
     ld [c], a
 
     ret 
@@ -2230,28 +2234,28 @@ CreateFire:
     ld a, b
     add a, CH_HIT_LEFT
     ld c, a
-    xor a
+    ld a, 1
     ld [c], a
 
     ; 当たり判定上端位置を設定する。
     ld a, b
     add a, CH_HIT_TOP
     ld c, a
-    xor a
+    ld a, 1
     ld [c], a
 
     ; 当たり判定右端位置を設定する。
     ld a, b
     add a, CH_HIT_RIGHT
     ld c, a
-    ld a, TILE_SIZE
+    ld a, 7
     ld [c], a
 
     ; 当たり判定下端位置を設定する。
     ld a, b
     add a, CH_HIT_BOTTOM
     ld c, a
-    ld a, TILE_SIZE
+    ld a, 7
     ld [c], a
 
     ret
@@ -2354,6 +2358,12 @@ UpdatePlayerShot:
 
     ; 移動処理を行う。
     call MoveFire
+
+
+    ; 敵との当たり判定処理を行う。
+    push de
+    call CollisionPlayerShotAndEnemy
+    pop de
 
     ; キャラクターの表示状態を更新する。
     push de
@@ -2579,4 +2589,39 @@ CheckHitCharacter:
 
     ; 敵の下端 < プレイヤーの上端のチェック結果をフラグレジスタへ反映させる。
     cp a, h
+    ret
+
+; プレイヤー弾と敵との衝突処理を行う。
+; @param a [out] 作業用
+; @param b [in] キャラクターデータ
+; @param c [out] 作業用
+; @param d [out] 作業用
+; @param e [out] 作業用
+; @param h [out] 作業用
+CollisionPlayerShotAndEnemy:
+
+    ; 敵のアドレスを設定する。
+    ld d, enemy_data & $ff
+
+    ; 敵と接触しているか調べる。
+    call CheckHitCharacter
+
+    ; 接触していなければ終了する。
+    ret c
+
+    ; 敵と衝突したプレイヤー弾は削除する。
+    ; 有効フラグを落とす。
+    ld a, b
+    add CH_STATUS
+    ld c, a
+    xor a
+    ld [c], a
+
+    ; x座標を0にして描画されないようにする。
+    ld a, b
+    add CH_POS_X
+    ld c, a
+    xor a
+    ld [c], a
+
     ret
