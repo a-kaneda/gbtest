@@ -49,26 +49,27 @@ FALL_ACCEL          equ $80
 MAX_FALL_SPEED      equ 4
 CHARACTER_SIZE      equ 16
 CH_STATUS           equ 0
-CH_WRAMDATA         equ 1
-CH_POS_X            equ 3
-CH_POS_Y            equ 4
-CH_TILE             equ 5
-CH_ATTR             equ 6
-CH_POS_X_DEC        equ 7
-CH_SPEED_Y          equ 8
-CH_ACCEL_Y          equ 9
-CH_ANIMATION        equ 10
-CH_ANIM_WAIT        equ 11
-CH_JUMP_TIME        equ 12
-CH_BLINK_TIME       equ 13
-CH_BLINK_WAIT       equ 14
-CH_WIDTH            equ 15
-CH_HEIGHT           equ 16
-CH_HIT_LEFT         equ 17
-CH_HIT_TOP          equ 18
-CH_HIT_BOTTOM       equ 19
-CH_HIT_RIGHT        equ 20
-CH_DATA_SIZE        equ 21
+CH_SPRITE           equ 1
+CH_WRAMDATA         equ 2
+CH_POS_X            equ 4
+CH_POS_Y            equ 5
+CH_TILE             equ 6
+CH_ATTR             equ 7
+CH_POS_X_DEC        equ 8
+CH_SPEED_Y          equ 9
+CH_ACCEL_Y          equ 10
+CH_ANIMATION        equ 11
+CH_ANIM_WAIT        equ 12
+CH_JUMP_TIME        equ 13
+CH_BLINK_TIME       equ 14
+CH_BLINK_WAIT       equ 15
+CH_WIDTH            equ 16
+CH_HEIGHT           equ 17
+CH_HIT_LEFT         equ 18
+CH_HIT_TOP          equ 19
+CH_HIT_BOTTOM       equ 20
+CH_HIT_RIGHT        equ 21
+CH_DATA_SIZE        equ 22
 SPRITE_OFFSET_X     equ 8
 SPRITE_OFFSET_Y     equ 16
 CH_STAT_ENABLE          equ %00000001
@@ -104,7 +105,7 @@ FIRE_SIZE           equ 8
 FIRE_MAX            equ 3
 FIRE_SPEED          equ 2
 EN_HP               equ 0
-EN_DATA_SIZE        equ 1
+EN_DATA_SIZE        equ 2
 
 FONT_BLANK          equ (TILENUM_FONT + 0)
 FONT_NUM_0          equ (TILENUM_FONT + 1)
@@ -1423,6 +1424,11 @@ GetMapInfo:
     ret
 
 ; モンスター01(スライム)を作成する。
+; @param a [out] 作業用
+; @param b [out] 作業用
+; @param c [out] 作業用
+; @param d [out] 作業用
+; @param e [out] 作業用
 CreateMonster01:
 
     ld b, (enemy_data & $ff)
@@ -1434,6 +1440,23 @@ CreateMonster01:
     add a, CH_STATUS
     ld c, a
     ld a, CH_STAT_ENABLE
+    ld [c], a
+
+    ; スプライトアドレスを設定する。
+    ld a, b
+    add a, CH_SPRITE
+    ld c, a
+    ld a, SPRNUM_ENEMY * SPRITE_SIZE
+    ld [c], a
+
+    ; WRAM領域のアドレスを設定する。
+    ld a, b
+    add a, CH_WRAMDATA
+    ld c, a
+    ld a, enemy_data2 & $ff
+    ld [c], a
+    inc c
+    ld a, (enemy_data2 >> 8) & $ff
     ld [c], a
 
     ; X座標を設定する。
@@ -1508,8 +1531,15 @@ CreateMonster01:
     ld a, 14
     ld [c], a
 
+    ; HPを設定する。
+    ld hl, enemy_data2
+    ld de, EN_HP
+    add hl, de
+    ld [hl], 3
+
     ret 
 
+ret z
 ; キャラクターの状態を更新する。
 ; @param b [in] 更新するキャラクター
 ; @param c [out] 作業用
@@ -1961,6 +1991,16 @@ CollisionEnemy:
     ; 敵の先頭アドレスを設定する。
     ld d, enemy_data & $ff
 
+    ; 敵の有効フラグを取得する。
+    ld a, d
+    add CH_STATUS
+    ld c, a
+    ld a, [c]
+    and CH_STAT_ENABLE
+
+    ; 有効フラグが落ちている場合は当たり判定は行わない。
+    ret z
+
     ; プレイヤーと敵の当たり判定を行う。
     call CheckHitCharacter
 
@@ -2188,6 +2228,13 @@ CreateFire:
     ld a, CH_STAT_ENABLE
     ld [c], a
 
+    ; スプライトアドレスを設定する。
+    ld a, b
+    add a, CH_SPRITE
+    ld c, a
+    ld a, SPRNUM_PLAYER_SHOT * SPRITE_SIZE
+    ld [c], a
+
     ; X座標を設定する。
     ld a, b
     add CH_POS_X
@@ -2313,10 +2360,23 @@ UseMagic:
     ret
 
 ; 敵の状態を更新する。
+; @param a [out] 作業用
+; @param b [out] 作業用
+; @param c [out] 作業用
 UpdateEnemy:
 
     ; 敵データのアドレスを設定する。
     ld b, enemy_data & $ff
+
+    ; 有効フラグを取得する。
+    ld a, b
+    add CH_STATUS
+    ld c, a
+    ld a, [c]
+    and CH_STAT_ENABLE
+
+    ; 有効フラグが立っていない場合は終了する。
+    ret z
 
     ; キャラクターの移動処理を行う。
     call MoveMonster01
@@ -2333,6 +2393,8 @@ UpdateEnemy:
 ; @param c [out] 作業用
 ; @param d [out] 作業用
 ; @param e [out] 作業用
+; @param h [out] 作業用
+; @param l [out] 作業用
 UpdatePlayerShot:
 
     ; 弾の数だけループする。
@@ -2358,7 +2420,6 @@ UpdatePlayerShot:
 
     ; 移動処理を行う。
     call MoveFire
-
 
     ; 敵との当たり判定処理を行う。
     push de
@@ -2598,10 +2659,21 @@ CheckHitCharacter:
 ; @param d [out] 作業用
 ; @param e [out] 作業用
 ; @param h [out] 作業用
+; @param l [out] 作業用
 CollisionPlayerShotAndEnemy:
 
     ; 敵のアドレスを設定する。
     ld d, enemy_data & $ff
+
+    ; 敵の有効フラグを取得する。
+    ld a, d
+    add CH_STATUS
+    ld c, a
+    ld a, [c]
+    and CH_STAT_ENABLE
+
+    ; 有効フラグが落ちている場合は当たり判定は行わない。
+    ret z
 
     ; 敵と接触しているか調べる。
     call CheckHitCharacter
@@ -2623,5 +2695,139 @@ CollisionPlayerShotAndEnemy:
     ld c, a
     xor a
     ld [c], a
+
+    ; 敵にダメージを与える。
+    push bc
+    ld b, d
+    ld e, 1
+    call DamageEnemy
+    pop bc
+
+    ret
+
+; 敵にダメージを与える。
+; @param a [out] 作業用
+; @param b [in] キャラクターデータ
+; @param c [out] 作業用
+; @param d [out] 作業用
+; @param e [in] ダメージ
+; @param h [out] 作業用
+; @param l [out] 作業用
+DamageEnemy:
+
+    ; WRAM領域のアドレスを取得する。
+    ld a, b
+    add CH_WRAMDATA
+    ld c, a
+    ld a, [c]
+    ld l, a
+    inc c
+    ld a, [c]
+    ld h, a
+
+    ; WRAM領域のアドレスをスタックに退避する。
+    push hl
+
+    ; HPを取得する。
+    ld a, l
+    add EN_HP
+    jr nc, .noInc
+    inc h
+.noInc
+    ld a, [hl]
+
+    ; ダメージ分減らす。
+    sub a, e
+
+    ; 0以下になった場合は敵の破壊処理を行う。
+    jr z, .destroy
+    jr c, .destroy
+
+    ; HPを変更する。
+    ld [hl], a
+
+    ; スタックを戻して処理を終了する。
+    pop hl
+    ret
+
+.destroy
+
+    ; 有効フラグを落とす。
+    ld a, b
+    add CH_STATUS
+    ld c, a
+    ld a, [c]
+    and ~CH_STAT_ENABLE
+    ld [c], a
+
+    ; スプライトを削除する。
+    call RemoveSprite
+
+    ; スタックを戻して処理を終了する。
+    pop hl
+    ret
+
+; キャラクターのスプライトを非表示にする。
+; @param a [out] 作業用
+; @param b [in] キャラクターデータ
+; @param c [out] 作業用
+; @param d [out] 作業用
+; @param e [out] 作業用
+; @param h [out] 作業用
+; @param l [out] 作業用
+RemoveSprite:
+
+    ; スプライトアドレスを取得する。
+    ld a, b
+    add CH_SPRITE
+    ld c, a
+    ld a, [c]
+
+    ; DMA用のアドレスを計算する。
+    ld hl, sprites
+    add a, l
+    ld l, a
+    jr nc, .noInc
+    inc h
+.noInc
+
+    ; 幅方向サイズを取得する。
+    ld a, b
+    add CH_WIDTH
+    ld c, a
+    ld a, [c]
+    ld d, a
+
+    ; 高さ方向サイズを取得する。
+    ld a, b
+    add CH_HEIGHT
+    ld c, a
+    ld a, [c]
+    ld e, a
+    ld c, a
+
+.loop
+
+    ; OAM用データを0にして非表示とする。
+    xor a
+    ld [hl+], a
+    ld [hl+], a
+    ld [hl+], a
+    ld [hl+], a
+
+    ; 高さ方向サイズをカウントする。
+    dec e
+
+    ; 0になるまでループする。
+    jr nz, .loop
+
+    ; 高さ方向サイズのカウンターをリセットする。
+    ld e, c
+
+    ; 幅方向サイズをカウントする。
+    dec d
+
+    ; 0になるまでループする。
+    jr nz, .loop
 
     ret
